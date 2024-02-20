@@ -1,4 +1,4 @@
-import sleap
+import sleap_io as sleap
 import numpy as np
 
 
