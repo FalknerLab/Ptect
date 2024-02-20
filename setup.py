@@ -11,7 +11,7 @@ setup(
     author="David Allen",
     author_email="da9769@princeton.edu",
     packages=find_packages(),
-    python_requires=">=3.11",
+    python_requires=">=3.8",
     install_requires=reqs,
     license_files=("LICENCE",),
     license="BSD-3 Licence")

@@ -1,7 +1,7 @@
 name: TerritoryTools
 
 dependencies:
-  - python>=3.11
+  - python>=3.8
   - pip
   - pip:
       - -e .

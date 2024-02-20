@@ -1,6 +1,5 @@
-numpy
-opencv-python
-h5py
-matplotlib
-scipy
-sleap-io
+numpy==1.26.0
+opencv-python==4.9.0.80
+h5py==3.2.0
+matplotlib==3.8.3
+scipy==1.12.0
