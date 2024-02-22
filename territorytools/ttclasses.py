@@ -1,4 +1,4 @@
-from tdlibrary import tdtools as tdt
+import behavior as tdt
 
 
 def make_dict(info_string, delimiter):
