@@ -10,7 +10,7 @@ setup(
     url="https://github.com/FalknerLab/TerritoryTools.git",
     author="David Allen",
     author_email="da9769@princeton.edu",
-    py_modules=['territorytools'],
+    py_modules=['src/territorytools'],
     python_requires=">=3.8",
     install_requires=reqs,
     license_files=("LICENCE",),
