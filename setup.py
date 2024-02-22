@@ -4,7 +4,7 @@ with open("requirements.txt") as f:
     reqs = f.readlines()
 
 setup(
-    name="TerritoryTools",
+    name="territorytools",
     version="1.0.0",
     description="Automated analysis of territorial behaviors including urine marking",
     url="https://github.com/FalknerLab/TerritoryTools.git",

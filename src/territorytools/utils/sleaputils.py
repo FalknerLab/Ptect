@@ -1,9 +1,9 @@
-import sleap_io as sleap
+import sleap_io
 import numpy as np
 
 
 def clean_sleap_file(slp_file, num_animals, dist_thresh=50, as_h5=False, filter_score=False):
-    labels = sleap.load_file(slp_file)
+    labels = sleap_io.load_slp(slp_file)
     og_track_list = []
     track_cents = []
     for n in range(num_animals):
@@ -50,28 +50,10 @@ def clean_sleap_file(slp_file, num_animals, dist_thresh=50, as_h5=False, filter_
 
 
 def slp_to_h5(slp_file):
-    labels = sleap.load_file(slp_file)
+    labels = sleap_io.load_slp(slp_file)
     out_slp_file = slp_file.split('.')[0] + '.h5'
     labels.export(out_slp_file)
 
-def filter_by_score_save(slp_file, score_thresh=0.7):
-    labels = sleap.load_file(slp_file)
-    c = 1
-    for l in labels.labeled_frames:
-        if c % 1000 == 0:
-            print('Cleaning slp file, on frame: ', c)
-        out_ins = []
-        num_i = len(l.instances)
-        if num_i > 0:
-            insts = l.instances
-            for i in insts:
-                if i.score > score_thresh:
-                    out_ins.append(i)
-        l.instances = out_ins
-        c += 1
-    out_slp_file = slp_file.split('.')[0] + '_fixed.h5'
-    labels.export(out_slp_file)
-    return out_slp_file
 
 def filter_by_score(slp_insts, score_thresh=0.7):
     num_i = len(slp_insts)
