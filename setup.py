@@ -7,7 +7,7 @@ setup(
     name="territorytools",
     version="1.0.0",
     description="Automated analysis of territorial behaviors including urine marking",
-    url="https://github.com/FalknerLab/TerritoryTools.git",
+    url="https://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@github.com/FalknerLab/TerritoryTools.git",
     author="David Allen",
     author_email="da9769@princeton.edu",
     py_modules=['territorytools'],
