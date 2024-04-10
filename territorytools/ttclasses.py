@@ -1,4 +1,4 @@
-import behavior as tdt
+from territorytools.behavior import get_territory_data
 
 
 def make_dict(info_string, delimiter):
@@ -57,11 +57,6 @@ class BasicRun:
 
     def add_key_val(self, key_name, key_val):
         self.info[key_name] = key_val
-
-
-class RunFromFile(BasicRun):
-    def __init__(self, file_name, info_dict, rot_offset=0, num_frames=0):
-        super().__init__(tdt.get_territory_data(file_name, rot_offset, num_frames), info_dict)
 
 
 class ComputeRun(BasicRun):

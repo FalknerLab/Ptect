@@ -2,7 +2,7 @@ import cv2
 import h5py
 import matplotlib.patches
 from matplotlib.gridspec import GridSpec
-from tdlibrary import tdtools as tdt
+from territorytools.behavior import compute_preferences
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import correlate, correlation_lags
@@ -193,7 +193,7 @@ def dist_to_urine(xy_data, urine_xy_cm):
 
 
 def marks_per_loc(urine_xys):
-    prefs = tdt.compute_preferences(urine_xys)
+    prefs = compute_preferences(urine_xys)
     return prefs
 
 
@@ -260,7 +260,7 @@ def plot_all_urine_xys(g_id, g_data, g_info, params):
 
 def urine_raster_by_territory(urine_data):
     exploded = explode_urine_data(urine_data)
-    _, r_marks, i_marks, n_marks = tdt.compute_preferences((exploded[:, 1], exploded[:, 2]))
+    _, r_marks, i_marks, n_marks = compute_preferences((exploded[:, 1], exploded[:, 2]))
     r_times = np.unique(exploded[r_marks, 0])
     i_times = np.unique(exploded[i_marks, 0])
     n_times = np.unique(exploded[n_marks, 0])
