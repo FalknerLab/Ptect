@@ -91,8 +91,6 @@ class Peetector:
                     cv2.floodFill(mask, None, (int(p[0]), int(p[1])), 0)
         if np.sum(mask) > 0:
             urine_xys = np.argwhere(mask > 0)
-            urine_xys = urine_px_to_cm(urine_xys, cent_xy=self.arena_cnt, px_per_cm=self.px_per_cm)
-            urine_xys = rotate_xy(urine_xys[:, 0], urine_xys[:, 1], self.rot)
         return urine_xys
 
     def peetect_frames(self, start_frame=0, num_frames=None, frame_win=20, save_path=None):
@@ -116,7 +114,9 @@ class Peetector:
             true_evts = check_px_across_window(win_buf[0], win_buf)
             if len(true_evts) > 0:
                 urine_evts_times.append(f - frame_win)
-                urine_evts_xys.append(true_evts)
+                urine_xys = urine_px_to_cm(true_evts, cent_xy=self.arena_cnt, px_per_cm=self.px_per_cm)
+                urine_xys = rotate_xy(urine_xys[:, 0], urine_xys[:, 1], self.rot)
+                urine_evts_xys.append(urine_xys)
             is_read, frame_i = vid_obj.read()
             this_evts = []
             if is_read:
