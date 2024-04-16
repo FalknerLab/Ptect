@@ -1,11 +1,9 @@
 import cv2
 import h5py
 import matplotlib.patches
-from matplotlib.gridspec import GridSpec
 from territorytools.behavior import compute_preferences, rotate_xy
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import correlate, correlation_lags
 
 
 def sleap_to_fill_pts(sleap_h5):
