@@ -162,7 +162,7 @@ def plot_urine_xys(xys, ax=None):
 
 
 def get_total_sides(times, urine_xys):
-    unique_xys = get_unique_marks(times, run_data)
+    unique_xys = get_unique_marks(times, urine_xys)
     left_tot = np.sum(unique_xys[:, 0] < 0)
     right_tot = np.sum(unique_xys[:, 0] > 0)
     return left_tot, right_tot
