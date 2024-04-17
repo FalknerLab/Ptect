@@ -138,8 +138,9 @@ def load_urine_data(time_file, evt_file):
 
 
 def urine_px_to_cm(pts, cent_xy=(325, 210), px_per_cm=7.38188976378):
-    x = (pts[:, 0] - cent_xy[0]) / px_per_cm
-    y = -(pts[:, 1] - cent_xy[1]) / px_per_cm
+    xy_np = np.array(cent_xy)
+    x = (pts[:, 0] - xy_np[0]) / px_per_cm
+    y = -(pts[:, 1] - xy_np[1]) / px_per_cm
     return np.vstack((x, y)).T
 
 
