@@ -112,6 +112,7 @@ class Peetector:
             true_evts = check_px_across_window(win_buf[0], win_buf)
             if len(true_evts) > 0:
                 urine_evts_times.append(f - frame_win)
+                print(true_evts)
                 urine_xys = urine_px_to_cm(true_evts, cent_xy=self.arena_cnt, px_per_cm=self.px_per_cm)
                 urine_xys = rotate_xy(urine_xys[:, 0], urine_xys[:, 1], self.rot)
                 urine_evts_xys.append(urine_xys)
@@ -138,9 +139,9 @@ def load_urine_data(time_file, evt_file):
 
 
 def urine_px_to_cm(pts, cent_xy=(325, 210), px_per_cm=7.38188976378):
-    xy_np = np.array(cent_xy)
-    x = (pts[:, 0] - xy_np[0]) / px_per_cm
-    y = -(pts[:, 1] - xy_np[1]) / px_per_cm
+    pts_np = np.array(pts)
+    x = (pts_np[:, 0] - cent_xy[0]) / px_per_cm
+    y = -(pts_np[:, 1] - cent_xy[1]) / px_per_cm
     return np.vstack((x, y)).T
 
 
