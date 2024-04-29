@@ -47,6 +47,7 @@ class Peetector:
     def __init__(self, avi_file, flood_pnts, h_thresh=100, s_kern=5, di_kern=51, t_thresh=20, dead_zones=[], cent_xy=(325, 210), px_per_cm=7.38188976378):
         self.thermal_vid = avi_file
         if type(flood_pnts) == str:
+            print('Converting slp file to fill points...')
             self.fill_pts = sleap_to_fill_pts(flood_pnts)
         else:
             self.fill_pts = flood_pnts
@@ -92,12 +93,13 @@ class Peetector:
             py = int(p[1])
             if 0 < px < im_w and 0 < py < im_h:
                 if mask[py, px] > 0:
-                    cv2.floodFill(mask, None, (int(p[0]), int(p[1])), 0)
+                    cv2.floodFill(mask, None, (px, py), 0)
+                    cv2.circle(mask, (px, py), 10, 255)
 
         # if urine detected set output to urine indices
         if np.sum(mask) > 0:
             urine_xys = np.argwhere(mask > 0)
-        return urine_xys
+        return urine_xys, mask
 
     def peetect_frames(self, start_frame=0, num_frames=None, frame_win=80, save_path=None):
         # setup video object
@@ -112,42 +114,41 @@ class Peetector:
         # initialize first window of urine events to check if detected urine stays hot long enough
         win_buf = []
         frame_buf = []
+        mask_buf = []
+        fillpt_buf = []
         for i in range(frame_win):
             is_read, frame_i = vid_obj.read()
             evts = []
+            mask = []
             if is_read:
-                evts = self.peetect(frame_i, self.fill_pts[i])
+                evts, mask = self.peetect(frame_i, self.fill_pts[i])
+            mask_buf.append(mask)
             win_buf.append(evts)
             frame_buf.append(frame_i)
-
-        # f, ax = plt.subplots(1, 1)
+            fillpt_buf.append(self.fill_pts[i])
 
         # collect frame times with urine and urine xys
         urine_evts_times = []
         urine_evts_xys = []
-
+        print('Running Peetect...')
         for f in range(frame_win, num_frames):
             # check oldest frame in buffer to see if any urine points stay hot
             true_evts = check_px_across_window(win_buf[0], win_buf)
-            cv2.imshow('Frame', frame_buf[0])
-            cv2.waitKey(1)
+
             # if good urine detected, convert to cm and add to output
             if len(true_evts) > 0:
-                # ax.scatter(true_evts[:, 0], true_evts[:, 1])
-                this_im = frame_buf[0]
-                for i in true_evts:
-                    cv2.circle(this_im, i, 1, (0, 200, 100))
-                cv2.imshow('Frame', this_im)
-                cv2.waitKey(1)
                 urine_evts_times.append(f - frame_win)
                 urine_xys = urine_px_to_cm(true_evts, cent_xy=self.arena_cnt, px_per_cm=self.px_per_cm)
                 urine_evts_xys.append(urine_xys)
-                # plt.show()
+
+            show_output(frame_buf[0], mask_buf[0], true_evts, fillpt_buf[0])
+
             # run detection on next frame
             is_read, frame_i = vid_obj.read()
             this_evts = []
+            mask = []
             if is_read:
-                evts = self.peetect(frame_i, self.fill_pts[f])
+                evts, mask = self.peetect(frame_i, self.fill_pts[f])
                 if len(evts) > 0:
                     this_evts = evts
 
@@ -156,20 +157,41 @@ class Peetector:
             win_buf.pop(0)
             frame_buf.append(frame_i)
             frame_buf.pop(0)
+            mask_buf.append(mask)
+            mask_buf.pop(0)
+            fillpt_buf.append(self.fill_pts[f])
+            fillpt_buf.pop(0)
             if f % 1 == 0:
                 print('Peetect running, on frame: ', str(f))
 
         return urine_evts_times, urine_evts_xys
 
-    def add_dz(self):
-        vid_obj = cv2.VideoCapture(self.thermal_vid)
-        _, frame = vid_obj.read()
-        plt.figure()
-        plt.imshow(frame)
-        pnts = plt.ginput(n=10, timeout=600)
+    def add_dz(self, zone=None, num_pts=0):
+        pnts = []
+        if zone is None:
+            vid_obj = cv2.VideoCapture(self.thermal_vid)
+            _, frame = vid_obj.read()
+            plt.figure()
+            plt.imshow(frame)
+            if num_pts == 0:
+                num_pts = 10
+            pnts = plt.ginput(n=num_pts, timeout=600)
+        else:
+            pnts = zone
         self.dead_zones.append(pnts)
         return pnts
 
+
+def show_output(raw_frame, mask_frame, urine_pnts, sleap_pnts):
+    for i in urine_pnts:
+        cv2.circle(raw_frame, i, 1, (0, 200, 100))
+    # col_mask = cv2.cvtColor(mask_frame, cv2.COLOR_GRAY2BGR)
+    for s in sleap_pnts:
+        slp_pnt = s.astype(int)
+        cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 10, (0, 100, 200))
+    # c_frame = cv2.hconcat([raw_frame, col_mask])
+    cv2.imshow('Frame', mask_frame)
+    cv2.waitKey(1)
 
 # def set_dz(self, dead_zones):
 #     if dead_zones == "Block0":
