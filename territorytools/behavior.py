@@ -3,7 +3,18 @@ import h5py
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.colors import to_rgb
-import random
+
+
+def get_territory_data(sleap_pts, rot_offset=0, px_per_ft=350, ref_point=(638, 504)):
+    head_angles = get_head_direction(sleap_pts)
+    head_angles = []
+    mouse_cent = np.nanmean(sleap_pts, axis=1).T
+    x, y = xy_to_cm(mouse_cent, center_pt=ref_point, px_per_ft=px_per_ft)
+    cent_x, cent_y = rotate_xy(x, y, rot_offset)
+    rel_xy = np.vstack((x, y)).T
+    dist_vec = np.linalg.norm(rel_xy[1:, :] - rel_xy[:-1, :], axis=1) / (px_per_ft/30.48)
+    dist_vec = np.hstack(([0], dist_vec))
+    return cent_x, cent_y, head_angles, dist_vec, sleap_pts
 
 
 def rotate_xy(x, y, rot):
@@ -31,19 +42,6 @@ def xy_to_cm(xy, center_pt=(325, 210), px_per_ft=225):
     cm_x = rel_xy[:, 0] / px_per_cm
     cm_y = rel_xy[:, 1] / px_per_cm
     return cm_x, cm_y
-
-
-def get_territory_data(sleap_pts, rot_offset=0, px_per_ft=350, ref_point=(638, 504)):
-    # sleap_pts = np.nanmean(mouse_data, axis=0)
-    head_angles = get_head_direction(sleap_pts)
-    head_angles = []
-    mouse_cent = np.nanmean(sleap_pts, axis=1).T
-    x, y = xy_to_cm(mouse_cent, center_pt=ref_point, px_per_ft=px_per_ft)
-    cent_x, cent_y = rotate_xy(x, y, rot_offset)
-    rel_xy = np.vstack((x, y)).T
-    dist_vec = np.linalg.norm(rel_xy[1:, :] - rel_xy[:-1, :], axis=1) / (px_per_ft/30.48)
-    dist_vec = np.hstack(([0], dist_vec))
-    return cent_x, cent_y, head_angles, dist_vec, sleap_pts
 
 
 def get_head_direction(mouse_data, in_deg=False):
