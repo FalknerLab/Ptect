@@ -1,7 +1,5 @@
 import cv2
 import h5py
-import matplotlib.patches
-from territorytools.behavior import compute_preferences, rotate_xy
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -48,7 +46,7 @@ def urine_px_to_cm(pts, cent_xy=(325, 210), px_per_cm=7.38188976378):
 class Peetector:
     def __init__(self, avi_file, flood_pnts, h_thresh=100, s_kern=5, di_kern=51, t_thresh=20, dead_zones=[], cent_xy=(325, 210), px_per_cm=7.38188976378):
         self.thermal_vid = avi_file
-        if type(flood_pnts) == 'str':
+        if type(flood_pnts) == str:
             self.fill_pts = sleap_to_fill_pts(flood_pnts)
         else:
             self.fill_pts = flood_pnts
@@ -63,7 +61,8 @@ class Peetector:
 
     def remove_dz(self, mask):
         for dz in self.dead_zones:
-            cv2.fillPoly(mask, pts=[dz], color=(255, 255, 255))
+            dz2 = np.array(dz).astype(int)
+            cv2.fillPoly(mask, pts=[dz2], color=(0, 0, 0))
 
 
     def peetect(self, frame, pts):
@@ -80,7 +79,7 @@ class Peetector:
         mask = np.uint8(255 * (frame_smooth > self.h_thresh))
 
         # remove deadzones
-        remove_dz(mask)
+        self.remove_dz(mask)
 
         # dilate resulting mask to hopefully merge mouse parts and expand urine
         dilate_kern = np.ones((self.di_kern, self.di_kern), np.uint8)
@@ -100,39 +99,50 @@ class Peetector:
             urine_xys = np.argwhere(mask > 0)
         return urine_xys
 
-    def peetect_frames(self, start_frame=0, num_frames=None, frame_win=20, save_path=None):
+    def peetect_frames(self, start_frame=0, num_frames=None, frame_win=80, save_path=None):
+        # setup video object
+        vid_obj = cv2.VideoCapture(self.thermal_vid)
+
         # if not specified, peetect whole video
         if num_frames is None:
-            num_frames = int(self.thermal_vid.get(cv2.CAP_PROP_FRAME_COUNT))
+            num_frames = int(vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # setup video object at starting frame
-        vid_obj = cv2.VideoCapture(self.thermal_vid)
         vid_obj.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
         # initialize first window of urine events to check if detected urine stays hot long enough
         win_buf = []
+        frame_buf = []
         for i in range(frame_win):
             is_read, frame_i = vid_obj.read()
             evts = []
             if is_read:
                 evts = self.peetect(frame_i, self.fill_pts[i])
             win_buf.append(evts)
+            frame_buf.append(frame_i)
+
+        # f, ax = plt.subplots(1, 1)
 
         # collect frame times with urine and urine xys
         urine_evts_times = []
         urine_evts_xys = []
 
         for f in range(frame_win, num_frames):
-            # check first frame in buffer to see if any urine points stay hot
+            # check oldest frame in buffer to see if any urine points stay hot
             true_evts = check_px_across_window(win_buf[0], win_buf)
-
+            cv2.imshow('Frame', frame_buf[0])
+            cv2.waitKey(1)
             # if good urine detected, convert to cm and add to output
             if len(true_evts) > 0:
+                # ax.scatter(true_evts[:, 0], true_evts[:, 1])
+                this_im = frame_buf[0]
+                for i in true_evts:
+                    cv2.circle(this_im, i, 1, (0, 200, 100))
+                cv2.imshow('Frame', this_im)
+                cv2.waitKey(1)
                 urine_evts_times.append(f - frame_win)
                 urine_xys = urine_px_to_cm(true_evts, cent_xy=self.arena_cnt, px_per_cm=self.px_per_cm)
-                urine_xys = rotate_xy(urine_xys[:, 0], urine_xys[:, 1], self.rot)
                 urine_evts_xys.append(urine_xys)
-
+                # plt.show()
             # run detection on next frame
             is_read, frame_i = vid_obj.read()
             this_evts = []
@@ -144,9 +154,10 @@ class Peetector:
             # add to buffer and remove oldest frame
             win_buf.append(this_evts)
             win_buf.pop(0)
-
-            if f % 1000 == 0:
-                print('Peetect running, on frame: ', srt(f))
+            frame_buf.append(frame_i)
+            frame_buf.pop(0)
+            if f % 1 == 0:
+                print('Peetect running, on frame: ', str(f))
 
         return urine_evts_times, urine_evts_xys
 
