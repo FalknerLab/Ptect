@@ -2,6 +2,12 @@ import cv2
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist
+from scipy.cluster.hierarchy import linkage
+from sklearn.neighbors import KDTree
+from sklearn.cluster import AgglomerativeClustering, DBSCAN
+from matplotlib.animation import FuncAnimation
+from matplotlib import cm
 
 
 def sleap_to_fill_pts(sleap_h5):
@@ -192,6 +198,61 @@ def show_output(raw_frame, mask_frame, urine_pnts, sleap_pnts):
     # c_frame = cv2.hconcat([raw_frame, col_mask])
     cv2.imshow('Frame', mask_frame)
     cv2.waitKey(1)
+
+
+def proj_urine_across_time(urine_xys, thresh=0):
+    all_xys = expand_urine_data(urine_xys)
+    unique_xys, cnts = np.unique(all_xys, axis=0, return_counts=True)
+    unique_xys = unique_xys[cnts > thresh, :]
+    return unique_xys
+
+
+def expand_urine_data(urine_xys, times=None):
+    def make_ts(t, n):
+        return t*np.ones(n)
+
+    num_urine_pnts_per_t = np.vectorize(len)(urine_xys)
+    expanded_data = np.vstack(urine_xys)
+    if times is not None:
+        time_vec = np.zeros(expanded_data.shape[0])
+        c = 0
+        for ind, (t, nums) in enumerate(zip(times, num_urine_pnts_per_t)):
+            time_vec[c:(c+nums)] = t
+            c += nums
+        expanded_data = np.hstack((time_vec[:, None], expanded_data))
+    return expanded_data
+
+
+def urine_segmentation(times_data, urine_xys, do_animation=True):
+    urine_data = expand_urine_data(urine_xys, times=times_data)
+    print('Segmenting urine...')
+    clustering = DBSCAN(eps=2, min_samples=5).fit(urine_data)
+    clus_id = clustering.labels_
+    if do_animation:
+        show_urine_segmented(urine_data, clus_id)
+
+
+def show_urine_segmented(expand_urine, labels, window=150):
+    num_f = min(int(max(expand_urine[:, 0])) + window, 1800)
+    f = plt.figure()
+    ax = f.add_subplot(projection='3d')
+    ax.set_xlim(0, window)
+    ax.set_ylim(-32, 32)
+    ax.set_zlim(-32, 32)
+    s = ax.scatter([], [], [])
+    set3 = cm.get_cmap('Set3', max(labels)).colors
+
+    def update(frame):
+        data_in_win = np.logical_and(expand_urine[:, 0] > frame, expand_urine[:, 0] < frame+window)
+        frame_data = expand_urine[data_in_win, :]
+        s._offsets3d = (frame_data[:, 0]-frame, frame_data[:, 1], frame_data[:, 2])
+        s.set_color(set3[labels[data_in_win], :])
+        return s
+
+    print('Running animation...')
+    anim = FuncAnimation(fig=f, func=update, frames=num_f, interval=1)
+    anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
+
 
 # def set_dz(self, dead_zones):
 #     if dead_zones == "Block0":
