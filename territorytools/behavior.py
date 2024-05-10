@@ -149,9 +149,10 @@ def xy_func(x):
     return np.vstack(([x[0]], [x[1]])).T
 
 
-def get_t(x, r_i):
-    t = np.arctan2(x[1], x[0])
-    return t
+def xy_to_polar(xy):
+    t = np.arctan2(xy[:, 1], xy[:, 0])
+    r = np.linalg.norm(xy, axis=1)
+    return t, r
 
 
 def plot_territory(ax, t, r):
