@@ -1,14 +1,12 @@
 import os
-
 from territorytools.behavior import get_territory_data, interp_behavs
 from territorytools.urine import Peetector, sleap_to_fill_pts, expand_urine_data, urine_segmentation, get_urine_source
 import h5py
-import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 
 
-def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_thresh=80, block=None):
+def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_thresh=80, block=None,
+                    urine_output_vid_path=None, show_all=True, start_t_sec=0, run_t_sec=None, samp_rate=40):
     """
 
     Parameters
@@ -19,7 +17,7 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_t
 
     Returns
     -------
-    List[Dict] for each mouse with keys 'x_cm' 'y_cm' 'angle' 'urine_data'
+    List[Dict] for each mouse with keys 'x_cm' 'y_cm' 'angle' 'velocity' 'urine_data'
 
     """
 
@@ -38,6 +36,9 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_t
         if f_splt[-1] == 'thermal.avi' or f_splt[-1] == 'thermal.mp4':
             therm_vid = f
 
+    start_f = int(start_t_sec*samp_rate)
+    run_f = int(run_t_sec*samp_rate)
+
     print('Loading SLEAP data...')
     sleap_file = h5py.File(folder_name + '/' + slp_data, 'r')
     sleap_data = sleap_file['tracks']
@@ -53,16 +54,16 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_t
     peetect = Peetector(folder_name + '/' + therm_vid, fill_pts)
     if block is not None:
         peetect.add_dz(zone=block)
-    urine_t, urine_xys = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid='peetect_demo.mp4', show_vid=False, start_frame=2600, num_frames=2400)
-    exp_urine = expand_urine_data(urine_xys, times=urine_t)
-    # urine_seg = urine_segmentation(urine_t, urine_xys)
+    urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=show_all,
+                                        start_frame=start_f, num_frames=run_f)
+    urine_seg = urine_segmentation(urine_data, do_animation=show_all)
     # urine_mouse = get_urine_source(mice_cents, exp_urine)
 
     mouse_list = []
     for m in range(num_mice):
-        out_dict = {'mouse_xy': mice_cents[:, :, m],
-                    'urine_times': urine_t,
-                    'urine_xys': urine_xys}
+        out_dict = {'x_cm': mice_cents[:, 0, m],
+                    'y_cm': mice_cents[:, 1, m],
+                    'urine_data': urine_data}
         mouse_list.append(out_dict)
 
     return mouse_list
