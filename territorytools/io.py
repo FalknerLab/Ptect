@@ -54,8 +54,8 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_t
     peetect = Peetector(folder_name + '/' + therm_vid, fill_pts)
     if block is not None:
         peetect.add_dz(zone=block)
-    urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=show_all,
-                                        start_frame=start_f, num_frames=run_f)
+    urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=False,
+                                        start_frame=start_f, num_frames=run_f, heat_thresh=urine_heat_thresh)
     urine_seg = urine_segmentation(urine_data, do_animation=show_all)
     # urine_mouse = get_urine_source(mice_cents, exp_urine)
 
