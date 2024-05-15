@@ -46,19 +46,27 @@ def urine_px_to_cm(pts, cent_xy=(325, 210), px_per_cm=7.38188976378):
     return np.vstack((x, y)).T
 
 
+def expand_urine_data(urine_xys, times=None):
+    num_urine_pnts_per_t = np.vectorize(len)(urine_xys)
+    expanded_data = np.vstack(urine_xys)
+    if times is not None:
+        time_vec = np.zeros(expanded_data.shape[0])
+        c = 0
+        for ind, (t, nums) in enumerate(zip(times, num_urine_pnts_per_t)):
+            time_vec[c:(c + nums)] = t
+            c += nums
+        expanded_data = np.hstack((time_vec[:, None], expanded_data))
+    return expanded_data
+
+
 class Peetector:
-    def __init__(self, avi_file, flood_pnts, h_thresh=70, s_kern=5, di_kern=51, t_thresh=20, dead_zones=[],
-                 cent_xy=(320, 212), px_per_cm=7.38188976378):
+    def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378):
         self.thermal_vid = avi_file
         if type(flood_pnts) == str:
             print('Converting slp file to fill points...')
             self.fill_pts = sleap_to_fill_pts(flood_pnts)
         else:
             self.fill_pts = flood_pnts
-        self.h_thresh = h_thresh
-        self.s_kern = s_kern
-        self.di_kern = di_kern
-        self.t_thresh = t_thresh
         self.dead_zones = dead_zones
         self.arena_cnt = cent_xy
         self.px_per_cm = px_per_cm
@@ -68,27 +76,28 @@ class Peetector:
             dz2 = np.array(dz).astype(int)
             cv2.fillPoly(mask, pts=[dz2], color=(0, 0, 0))
 
-    def peetect(self, frame, pts):
+    def peetect(self, frame, pts, h_thresh=70, s_kern=5, di_kern=51):
+
         # get frame data, convert to grey
         im_w = np.shape(frame)[1]
         im_h = np.shape(frame)[0]
         f1 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # smooth frame
-        smooth_kern = np.ones((self.s_kern, self.s_kern), np.float32) / (self.s_kern * self.s_kern)
+        smooth_kern = np.ones((s_kern, s_kern), np.float32) / (s_kern * s_kern)
         frame_smooth = cv2.filter2D(src=f1, ddepth=-1, kernel=smooth_kern)
-        circ_mask = cv2.circle(np.zeros_like(frame_smooth), (self.arena_cnt[0] + 12, self.arena_cnt[1] + 18), 195, 255,
-                               -1)
+        circ_mask = cv2.circle(np.zeros_like(frame_smooth), (self.arena_cnt[0] + 12, self.arena_cnt[1] + 18),
+                               195, 255, -1)
         frame_smooth = cv2.bitwise_and(frame_smooth, frame_smooth, mask=circ_mask)
 
         # mask by thermal threshold
-        mask = np.uint8(255 * (frame_smooth > self.h_thresh))
+        mask = np.uint8(255 * (frame_smooth > h_thresh))
 
         # remove deadzones
         self.fill_deadzones(mask)
 
         # dilate resulting mask to hopefully merge mouse parts and expand urine
-        dilate_kern = np.ones((self.di_kern, self.di_kern), np.uint8)
+        dilate_kern = np.ones((di_kern, di_kern), np.uint8)
         cv2.dilate(mask, dilate_kern, iterations=1)
 
         # fill in all the given points with black
@@ -104,9 +113,11 @@ class Peetector:
         # if urine detected set output to urine indices
         if np.sum(mask) > 0:
             urine_xys = np.argwhere(mask > 0)
+
         return urine_xys, mask
 
-    def peetect_frames(self, start_frame=0, num_frames=None, frame_win=80, save_path=None, save_vid=None, show_vid=False):
+    def peetect_frames(self, start_frame=0, num_frames=None, frame_win=80, heat_thresh=70,
+                       save_data=None, save_vid=None, show_vid=False):
         # setup video object
         vid_obj = cv2.VideoCapture(self.thermal_vid)
 
@@ -128,7 +139,7 @@ class Peetector:
             evts = []
             mask = []
             if is_read:
-                evts, mask = self.peetect(frame_i, fill_pnts[i])
+                evts, mask = self.peetect(frame_i, fill_pnts[i], h_thresh=heat_thresh)
             mask_buf.append(mask)
             win_buf.append(evts)
             frame_buf.append(frame_i)
@@ -168,7 +179,7 @@ class Peetector:
             this_evts = []
             mask = []
             if is_read:
-                evts, mask = self.peetect(frame_i, fill_pnts[f])
+                evts, mask = self.peetect(frame_i, fill_pnts[f], h_thresh=heat_thresh)
                 if len(evts) > 0:
                     this_evts = evts
 
@@ -181,13 +192,14 @@ class Peetector:
             mask_buf.pop(0)
             fillpt_buf.append(fill_pnts[f])
             fillpt_buf.pop(0)
-            if f % 100 == 0:
+            if f % 1000 == 0:
                 print('Peetect running, on frame: ', str(f))
         if save_vid is not None:
             out_vid.release()
             print('Peetect video saved')
             cv2.destroyAllWindows()
-        return urine_evts_times, urine_evts_xys
+        urine_data = expand_urine_data(urine_evts_xys, times=urine_evts_times)
+        return urine_data
 
     def add_dz(self, zone=None, num_pts=0):
         w1 = np.array([[316, 210], [330, 210], [330, 480], [316, 480]])
@@ -233,40 +245,19 @@ class Peetector:
         return raw_frame
 
 
-def proj_urine_across_time(urine_xys, thresh=0):
-    all_xys = expand_urine_data(urine_xys)
+def proj_urine_across_time(urine_data, thresh=0):
+    all_xys = urine_data[:, 1:]
     unique_xys, cnts = np.unique(all_xys, axis=0, return_counts=True)
     unique_xys = unique_xys[cnts > thresh, :]
     return unique_xys
 
 
-def expand_urine_data(urine_xys, times=None):
-    def make_ts(t, n):
-        return t * np.ones(n)
-
-    num_urine_pnts_per_t = np.vectorize(len)(urine_xys)
-    expanded_data = np.vstack(urine_xys)
-    if times is not None:
-        time_vec = np.zeros(expanded_data.shape[0])
-        c = 0
-        for ind, (t, nums) in enumerate(zip(times, num_urine_pnts_per_t)):
-            time_vec[c:(c + nums)] = t
-            c += nums
-        expanded_data = np.hstack((time_vec[:, None], expanded_data))
-    return expanded_data
-
-
-def urine_segmentation(times_data, urine_xys, do_animation=False):
-    urine_data = expand_urine_data(urine_xys, times=times_data)
+def urine_segmentation(urine_data, do_animation=False):
     print('Segmenting urine...')
     clustering = DBSCAN(eps=2, min_samples=5).fit(urine_data)
     clus_id = clustering.labels_
     if do_animation:
         show_urine_segmented(urine_data, clus_id)
-    # else:
-    #     ax = plt.subplot(projection='3d')
-    #     ax.scatter(urine_data[:, 0], urine_data[:, 1], urine_data[:, 2], c=clus_id, cmap='Set3')
-    #     plt.show()
     return clus_id
 
 
