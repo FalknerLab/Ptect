@@ -192,7 +192,7 @@ class Peetector:
             mask_buf.pop(0)
             fillpt_buf.append(fill_pnts[f])
             fillpt_buf.pop(0)
-            if f % 1000 == 0:
+            if f % 100 == 0:
                 print('Peetect running, on frame: ', str(f))
         if save_vid is not None:
             out_vid.release()
