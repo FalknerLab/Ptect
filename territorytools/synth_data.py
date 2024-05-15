@@ -1,5 +1,5 @@
 import numpy as np
-from territorytools.urineV2 import proj_urine_across_time, urine_segmentation
+from territorytools.urine import proj_urine_across_time, urine_segmentation
 import matplotlib.pyplot as plt
 from territorytools.behavior import xy_to_polar
 from scipy.stats import multivariate_normal
@@ -39,17 +39,16 @@ def sample_discrete_cdf(data_vals, cdfs, num_samps=1000):
 
 if __name__ == '__main__':
     all_xys = np.ndarray((0, 2))
-    for i in range(1):
+    for i in [1]:
         print('Loading ' + str(i))
         real_urine = np.load('D:/TerritoryTools/tests/test_data/urinexy' + str(i) + '.npy', allow_pickle=True)
         real_times = np.load('D:/TerritoryTools/tests/test_data/urinetimes' + str(i) + '.npy', allow_pickle=True)
         # urine_segmentation(real_times, real_urine)
         # proj_urine = proj_urine_across_time(real_urine, thresh=80)
         # all_xys = np.vstack((all_xys, proj_urine))
-        urine_segmentation(real_times[:5000], real_urine[:5000])
+        urine_segmentation(real_times, real_urine)
     # all_t, all_r = xy_to_polar(all_xys)
     # x_vals, cdfs = make_pdf(np.vstack((all_t, all_r)).T)
     # samps = sample_discrete_cdf(x_vals, cdfs)
     # ax = plt.subplot(projection='polar')
     # ax.scatter(samps[:, 0], samps[:, 1])
-    plt.show()
