@@ -3,9 +3,10 @@ from territorytools.behavior import get_territory_data, interp_behavs
 from territorytools.urine import Peetector, sleap_to_fill_pts, expand_urine_data, urine_segmentation, get_urine_source
 import h5py
 import numpy as np
+import matplotlib.pyplot as plt
 
 
-def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_thresh=80, block=None,
+def import_all_data(folder_name, num_mice=1, urine_frame_thresh=20, urine_heat_thresh=65, block=None,
                     urine_output_vid_path=None, show_all=True, start_t_sec=0, run_t_sec=None, samp_rate=40):
     """
 
@@ -54,16 +55,27 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=40, urine_heat_t
     peetect = Peetector(folder_name + '/' + therm_vid, fill_pts)
     if block is not None:
         peetect.add_dz(zone=block)
-    urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=False,
+    urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=show_all,
                                         start_frame=start_f, num_frames=run_f, heat_thresh=urine_heat_thresh)
-    urine_seg = urine_segmentation(urine_data, do_animation=show_all)
-    # urine_mouse = get_urine_source(mice_cents, exp_urine)
+    urine_seg = []
+    urine_mouse = []
+    if len(urine_data) > 0:
+        urine_seg = urine_segmentation(urine_data)
+        urine_mouse = get_urine_source(mice_cents, urine_data, urine_seg)
 
     mouse_list = []
     for m in range(num_mice):
+        m_urine = []
+        clus_id = []
+        if len(urine_mouse) > 0:
+            m_urine_inds = urine_mouse == m
+            m_urine = urine_data[m_urine_inds, :]
+            m_urine_seg = urine_seg[m_urine_inds]
+            _, clus_id = np.unique(m_urine_seg, return_inverse=True)
         out_dict = {'x_cm': mice_cents[:, 0, m],
                     'y_cm': mice_cents[:, 1, m],
-                    'urine_data': urine_data}
+                    'urine_data': m_urine,
+                    'urine_segment': clus_id}
         mouse_list.append(out_dict)
 
     return mouse_list
