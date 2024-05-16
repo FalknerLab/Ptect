@@ -197,8 +197,13 @@ class Peetector:
         if save_vid is not None:
             out_vid.release()
             print('Peetect video saved')
-            cv2.destroyAllWindows()
-        urine_data = expand_urine_data(urine_evts_xys, times=urine_evts_times)
+        cv2.destroyAllWindows()
+
+        # Convert to ndarrays instead of lists
+        urine_evts_xys = np.array(urine_evts_xys, dtype=np.ndarray)
+        urine_data = np.array([])
+        if len(urine_evts_xys) > 0:
+            urine_data = expand_urine_data(urine_evts_xys, times=urine_evts_times)
         return urine_data
 
     def add_dz(self, zone=None, num_pts=0):
@@ -269,25 +274,41 @@ def show_urine_segmented(expand_urine, labels, window=300):
     ax.set_ylim(-32, 32)
     ax.set_zlim(-32, 32)
     s = ax.scatter([], [], [])
-    set3 = cm.get_cmap('Set3', max(labels)).colors
+    set3 = cm.get_cmap('Set3', len(np.unique(labels))).colors
 
     def update(frame):
         data_in_win = np.logical_and(expand_urine[:, 0] > frame, expand_urine[:, 0] < frame + window)
         frame_data = expand_urine[data_in_win, :]
-        s._offsets3d = (frame_data[:, 0] - frame, frame_data[:, 1], frame_data[:, 2])
-        s.set_color(set3[labels[data_in_win], :])
+        if len(frame_data) > 0:
+            s._offsets3d = (frame_data[:, 0] - frame, frame_data[:, 1], frame_data[:, 2])
+            s.set_color(set3[labels[data_in_win], :])
         return s
 
     print('Running animation...')
     anim = FuncAnimation(fig=f, func=update, frames=num_f, interval=1)
-    anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
+    plt.show()
+    # anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
 
 
-def get_urine_source(test_cents, exp_urine):
-    urine_ids = []
-    for i in range(len(exp_urine)):
-        this_t = exp_urine[i, 0]
-        urine_xy = exp_urine[i, 1:]
-        dists = np.linalg.norm(test_cents[this_t, :, :] - urine_xy, axis=0)
-        urine_ids.append(np.argmin(dists))
+def get_urine_source(mice_cents, urine_data, urine_seg):
+    num_m = mice_cents.shape[2]
+    urine_segs = np.unique(urine_seg)
+    urine_ids = np.zeros_like(urine_seg)
+    for u in urine_segs:
+        if u != np.nan:
+            inds = urine_seg == u
+            times = urine_data[inds, 0].astype(int)
+            cent_seg = np.mean(urine_data[inds, 1:], axis=0)
+            mice_xys = mice_cents[times[0], :, :]
+            dists = np.linalg.norm(mice_xys - cent_seg, axis=0)
+            # print(np.argmin(dists))
+            # plt.figure()
+            # plt.scatter(mice_xys[0, 0], mice_xys[1, 0])
+            # plt.scatter(mice_xys[0, 1], mice_xys[1, 1])
+            # plt.scatter(cent_seg[0], cent_seg[1])
+            # plt.xlim(-32, 32)
+            # plt.ylim(-32, 32)
+            # plt.title(str(dists))
+            # plt.show()
+            urine_ids[inds] = np.argmin(dists)
     return urine_ids
