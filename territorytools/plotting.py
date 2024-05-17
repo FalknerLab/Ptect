@@ -86,5 +86,5 @@ if __name__ == '__main__':
     mouse_dicts = import_all_data(run_dir, num_mice=2, run_t_sec=60, block='block0', bypass_peetect=False,
                                   urine_output_vid_path=peetect_vid)
     print('Visualizing data...')
-    data_movie(run_dir + 'demo_optical.mp4', peetect_vid, mouse_dicts, 'block0', num_frames=60*40,
+    data_movie(run_dir + 'demo_optical.mp4', peetect_vid, mouse_dicts, 'block0', num_frames=60*40-40,
                save_path='D:/TerritoryTools/demo/demo_out.mp4')
