@@ -1,2 +1,2 @@
-# TerritoryTools
-Analysis pipelines for rodent territorial behavior data including methods for automated urine detection via thermal data
+# Ptect: Automated analysis of rodent territorial marking behavior
+[<img src="peetect_logo_v1.svg">]
