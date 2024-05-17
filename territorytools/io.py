@@ -6,8 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def import_all_data(folder_name, num_mice=1, urine_frame_thresh=20, urine_heat_thresh=65, block=None,
-                    urine_output_vid_path=None, show_all=True, start_t_sec=0, run_t_sec=None, samp_rate=40):
+def import_all_data(folder_name, num_mice=1, urine_frame_thresh=30, urine_heat_thresh=70, block=None,
+                    bypass_peetect=False, urine_output_vid_path=None, show_all=True, start_t_sec=0, run_t_sec=None,
+                    samp_rate=40):
     """
 
     Parameters
@@ -41,27 +42,36 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=20, urine_heat_t
     run_f = int(run_t_sec*samp_rate)
 
     print('Loading SLEAP data...')
-    sleap_file = h5py.File(folder_name + '/' + slp_data, 'r')
+    sleap_file = h5py.File(folder_name + '/' + therm_data, 'r')
     sleap_data = sleap_file['tracks']
     num_frames = sleap_data[0].shape[2]
     mice_cents = np.zeros((num_frames, 2, num_mice))
+    angs = []
     for i in range(num_mice):
-        cent_x, cent_y, head_angles, vel, sleap_pts = get_territory_data(sleap_data[i], rot_offset=0)
+        cent_x, cent_y, head_angles, vel, sleap_pts = get_territory_data(sleap_data[i], rot_offset=0,
+                                                                         ref_point=(325, 210),
+                                                                         px_per_ft=30.48*7.38188976378,
+                                                                         trunk_ind=6,
+                                                                         head_ind=5) #trunk=6 head=5 for thermal
         interp_x, interp_y = interp_behavs(cent_x, cent_y)
         mice_cents[:, 0, i] = interp_x
         mice_cents[:, 1, i] = interp_y
+        angs.append(head_angles)
 
-    fill_pts = sleap_to_fill_pts(folder_name + '/' + therm_data)
-    peetect = Peetector(folder_name + '/' + therm_vid, fill_pts)
-    if block is not None:
-        peetect.add_dz(zone=block)
-    urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=show_all,
-                                        start_frame=start_f, num_frames=run_f, heat_thresh=urine_heat_thresh)
+    plt.show()
     urine_seg = []
     urine_mouse = []
-    if len(urine_data) > 0:
-        urine_seg = urine_segmentation(urine_data)
-        urine_mouse = get_urine_source(mice_cents, urine_data, urine_seg)
+    if not bypass_peetect:
+        fill_pts = sleap_to_fill_pts(folder_name + '/' + therm_data)
+        peetect = Peetector(folder_name + '/' + therm_vid, fill_pts)
+        if block is not None:
+            peetect.add_dz(zone=block)
+        urine_data = peetect.peetect_frames(frame_win=urine_frame_thresh, save_vid=urine_output_vid_path, show_vid=show_all,
+                                            start_frame=start_f, num_frames=run_f, heat_thresh=urine_heat_thresh)
+        if len(urine_data) > 0:
+            urine_seg = urine_segmentation(urine_data)
+            urine_mouse = (urine_data[:, 1] > 0).astype(int)
+            # urine_mouse = get_urine_source(mice_cents, urine_data, urine_seg)
 
     mouse_list = []
     for m in range(num_mice):
@@ -74,6 +84,7 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=20, urine_heat_t
             _, clus_id = np.unique(m_urine_seg, return_inverse=True)
         out_dict = {'x_cm': mice_cents[:, 0, m],
                     'y_cm': mice_cents[:, 1, m],
+                    'angle': angs[m],
                     'urine_data': m_urine,
                     'urine_segment': clus_id}
         mouse_list.append(out_dict)

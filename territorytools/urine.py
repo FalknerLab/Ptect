@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from matplotlib.animation import FuncAnimation
 from matplotlib import cm
+from PIL import ImageFont, ImageDraw, Image
 
 
 def sleap_to_fill_pts(sleap_h5):
@@ -148,7 +149,8 @@ class Peetector:
         out_vid = None
         if save_vid is not None:
             fourcc = cv2.VideoWriter.fourcc(*'mp4v')
-            out_vid = cv2.VideoWriter(save_vid, fourcc, 120, (frame_i.shape[1], frame_i.shape[0]), isColor=True)
+            # out_vid = cv2.VideoWriter(save_vid, fourcc, 120, (frame_i.shape[1], frame_i.shape[0]), isColor=True)
+            out_vid = cv2.VideoWriter(save_vid, fourcc, 120, (1280, 960), isColor=True)
 
         # collect frame times with urine and urine xys
         urine_evts_times = []
@@ -231,9 +233,7 @@ class Peetector:
             self.dead_zones.append(pnts)
 
     def show_output(self, raw_frame, urine_pnts, sleap_pnts):
-        # mask_c = cv2.circle(np.zeros_like(raw_frame), (self.arena_cnt[0] + 12, self.arena_cnt[1] + 18), 195, 255, -1)
-        # raw_frame = cv2.bitwise_and(raw_frame, raw_frame, mask=mask_c[:, :, 0])
-        cv2.circle(raw_frame, (self.arena_cnt[0] + 12, self.arena_cnt[1] + 18), 195, 255, 1)
+        cv2.circle(raw_frame, (self.arena_cnt[0] + 12, self.arena_cnt[1] + 18), 195, (255, 255, 255, 255), 1, cv2.LINE_AA)
         urine_mask = np.zeros_like(raw_frame[:, :, 0])
         if len(urine_pnts) > 0:
             urine_mask[urine_pnts[:, 1], urine_pnts[:, 0]] = 1
@@ -241,13 +241,19 @@ class Peetector:
             cv2.drawContours(raw_frame, contours, -1, (0, 255, 0), 1)
         for s in sleap_pnts:
             slp_pnt = s.astype(int)
-            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (0, 100, 200))
+            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (0, 100, 200), -1, cv2.LINE_AA)
         for d in self.dead_zones:
-            cv2.polylines(raw_frame, [d], True, (0, 0, 250))
-        cv2.putText(raw_frame, 'Fill Points', (10, 25), cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 100, 200))
-        cv2.putText(raw_frame, 'Dead Zones', (10, 50), cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 0, 250))
-        cv2.putText(raw_frame, 'Mark Detected', (10, 75), cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 200, 100))
-        return raw_frame
+            cv2.polylines(raw_frame, [d], True, (0, 0, 250), 1, cv2.LINE_AA)
+
+        big_frame = cv2.resize(raw_frame, (1280, 960))
+        font = ImageFont.truetype('arial.ttf', 48)
+        img_pil = Image.fromarray(big_frame)
+        draw = ImageDraw.Draw(img_pil)
+        draw.text((20, 10), 'Fill Points', font=font, fill=(0, 100, 200, 0))
+        draw.text((20, 60), 'Dead Zones', font=font, fill=(0, 0, 250, 0))
+        draw.text((20, 110), 'Mark Detected', font=font, fill=(0, 200, 100, 0))
+        img = np.array(img_pil)
+        return img
 
 
 def proj_urine_across_time(urine_data, thresh=0):
@@ -290,7 +296,8 @@ def show_urine_segmented(expand_urine, labels, window=300):
     # anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
 
 
-def get_urine_source(mice_cents, urine_data, urine_seg):
+def get_urine_source(mice_cents, urine_data, urine_seg, look_back_frames=40):
+    print('Finding Marking Source...')
     num_m = mice_cents.shape[2]
     urine_segs = np.unique(urine_seg)
     urine_ids = np.zeros_like(urine_seg)
@@ -299,16 +306,7 @@ def get_urine_source(mice_cents, urine_data, urine_seg):
             inds = urine_seg == u
             times = urine_data[inds, 0].astype(int)
             cent_seg = np.mean(urine_data[inds, 1:], axis=0)
-            mice_xys = mice_cents[times[0], :, :]
-            dists = np.linalg.norm(mice_xys - cent_seg, axis=0)
-            # print(np.argmin(dists))
-            # plt.figure()
-            # plt.scatter(mice_xys[0, 0], mice_xys[1, 0])
-            # plt.scatter(mice_xys[0, 1], mice_xys[1, 1])
-            # plt.scatter(cent_seg[0], cent_seg[1])
-            # plt.xlim(-32, 32)
-            # plt.ylim(-32, 32)
-            # plt.title(str(dists))
-            # plt.show()
+            mice_xys = mice_cents[times[0]-look_back_frames, :, :]
+            dists = np.linalg.norm(mice_xys - cent_seg, axis=1)
             urine_ids[inds] = np.argmin(dists)
     return urine_ids

@@ -1,14 +1,13 @@
 import numpy as np
 import warnings
-
+import matplotlib.pyplot as plt
 
 # Disabling runtime warning for mean of empty slice which doesn't seem to relate to any issues
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def get_territory_data(sleap_pts, rot_offset=0, px_per_ft=350, ref_point=(638, 504)):
-    head_angles = get_head_direction(sleap_pts)
-    head_angles = []
+def get_territory_data(sleap_pts, rot_offset=0, px_per_ft=350, ref_point=(638, 504), trunk_ind=4, head_ind=1):
+    head_angles = get_head_direction(sleap_pts, trunk_ind=trunk_ind, head_ind=head_ind)
     mouse_cent = np.nanmean(sleap_pts, axis=1).T
     x, y = xy_to_cm(mouse_cent, center_pt=ref_point, px_per_ft=px_per_ft)
     cent_x, cent_y = rotate_xy(x, y, rot_offset)
@@ -45,10 +44,10 @@ def xy_to_cm(xy, center_pt=(325, 210), px_per_ft=225):
     return cm_x, cm_y
 
 
-def get_head_direction(mouse_data, in_deg=False):
+def get_head_direction(mouse_data, in_deg=False, trunk_ind=4, head_ind=1):
     md_copy = np.copy(mouse_data)
     md_copy[1, :, :] = -md_copy[1, :, :]
-    xy_nose = md_copy[:, 0, :] - md_copy[:, 1, :]
+    xy_nose = md_copy[:, head_ind, :] - md_copy[:, trunk_ind, :]
     angs = np.arctan2(xy_nose[1, :], xy_nose[0, :])
     if in_deg:
         angs = np.degrees(angs)
@@ -68,6 +67,16 @@ def compute_preferences(exp_data, walls=None):
     for i, ter in enumerate((ter_a, ter_b, ter_c)):
         prefs[i] = np.sum(ter) / len(t)
     return prefs, ter_a, ter_b, ter_c
+
+
+def xy_to_territory(x, y):
+    walls = [-np.pi / 2, 5 * np.pi / 6, np.pi / 6]
+    t = np.arctan2(y, x)
+    ter_a = np.logical_or(t < walls[0], t > walls[1])
+    ter_b = np.logical_and(t > walls[0], t < walls[2])
+    ter_c = np.logical_and(t > walls[2], t < walls[1])
+    ter_id = np.argmax([ter_a, ter_b, ter_c])
+    return ter_id
 
 
 def interp_behavs(*args):
