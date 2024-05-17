@@ -1,3 +1,5 @@
 # Ptect: Automated analysis of rodent territorial marking behavior
-<img src="peetect_logo_v1.svg">
-<img src="demo_out.gif">
+<p float="left">
+  <img src="peetect_logo_v1.svg" width="250" />
+  <img src="demo_out.gif" width="700" />
+</p>
