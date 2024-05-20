@@ -117,8 +117,8 @@ class Peetector:
 
         return urine_xys, mask
 
-    def peetect_frames(self, start_frame=0, num_frames=None, frame_win=80, heat_thresh=70,
-                       save_data=None, save_vid=None, show_vid=False):
+    def peetect_frames(self, start_frame=0, num_frames=None, time_thresh=2, heat_thresh=70,
+                       save_data=None, save_vid=None, show_vid=False, hz=40):
         # setup video object
         vid_obj = cv2.VideoCapture(self.thermal_vid)
 
@@ -129,6 +129,8 @@ class Peetector:
         # offset video and fill points to start frame
         vid_obj.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         fill_pnts = self.fill_pts[start_frame:]
+
+        frame_win = int(time_thresh*hz)
 
         # initialize first window of urine events to check if detected urine stays hot long enough
         win_buf = []
@@ -310,3 +312,13 @@ def get_urine_source(mice_cents, urine_data, urine_seg, look_back_frames=40):
             dists = np.linalg.norm(mice_xys - cent_seg, axis=1)
             urine_ids[inds] = np.argmin(dists)
     return urine_ids
+
+
+def urine_across_time(expand_urine, len_s=0, hz=40):
+    times = expand_urine[:, 0]
+    if len_s == 0:
+        len_s = np.max(times)
+    urine_over_time = np.zeros(int(len_s*hz))
+    unique_ts, urine_cnts = np.unique(times, return_counts=True)
+    urine_over_time[unique_ts] = urine_cnts
+    return urine_over_time
