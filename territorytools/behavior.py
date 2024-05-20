@@ -1,6 +1,5 @@
 import numpy as np
 import warnings
-import matplotlib.pyplot as plt
 
 # Disabling runtime warning for mean of empty slice which doesn't seem to relate to any issues
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -22,7 +21,6 @@ def rotate_xy(x, y, rot):
                 'none': 0,
                 'irn': 120,
                 'nir': 240}
-    rot_deg = 0
     if type(rot) == str:
         rot_deg = rot_dict[rot]
     else:
@@ -54,23 +52,19 @@ def get_head_direction(mouse_data, in_deg=False, trunk_ind=4, head_ind=1):
     return angs
 
 
-def compute_preferences(exp_data, walls=None):
+def compute_preferences(x, y, walls=None):
+    ter_id = np.zeros_like(x)
+    for i, (x0, y0) in enumerate(zip(x, y)):
+        ter_id[i] = xy_to_territory(x0, y0, walls=walls)
+    ter, ter_cnts = np.unique(ter_id, return_counts=True)
+    prefs = np.zeros(3)
+    prefs[ter] = ter_cnts
+    return prefs, ter_id
+
+
+def xy_to_territory(x, y, walls=None):
     if walls is None:
         walls = [-np.pi / 2, 5 * np.pi / 6, np.pi / 6]
-    x = exp_data[0]
-    y = exp_data[1]
-    t = np.arctan2(y, x)
-    ter_a = np.logical_or(t < walls[0], t > walls[1])
-    ter_b = np.logical_and(t > walls[0], t < walls[2])
-    ter_c = np.logical_and(t > walls[2], t < walls[1])
-    prefs = np.zeros(len(walls))
-    for i, ter in enumerate((ter_a, ter_b, ter_c)):
-        prefs[i] = np.sum(ter) / len(t)
-    return prefs, ter_a, ter_b, ter_c
-
-
-def xy_to_territory(x, y):
-    walls = [-np.pi / 2, 5 * np.pi / 6, np.pi / 6]
     t = np.arctan2(y, x)
     ter_a = np.logical_or(t < walls[0], t > walls[1])
     ter_b = np.logical_and(t > walls[0], t < walls[2])
@@ -90,22 +84,23 @@ def interp_behavs(*args):
     return out_behavs
 
 
-def avg_angs(exp_data):
+def avg_angs(head_angs):
     #Get average angle of head direction data
-    avg_s = np.nanmean(np.sin(exp_data[2]))
-    avg_c = np.nanmean(np.cos(exp_data[2]))
+    avg_s = np.nanmean(np.sin(head_angs))
+    avg_c = np.nanmean(np.cos(head_angs))
     return np.arctan2(avg_s, avg_c)
 
 
-def xy_to_polar(xy):
-    t = np.arctan2(xy[:, 1], xy[:, 0])
+def xy_to_polar(x, y):
+    t = np.arctan2(y, x)
+    xy = np.vstack((x[:, None], y[:, None])).T
     r = np.linalg.norm(xy, axis=1)
     return t, r
 
 
 def compute_over_spatial_bin(xpos, ypos, data, func, bins=20, range=None):
     if range is None:
-        range = [[-400, 400], [-400, 400]]
+        range = [[-32, 32], [-32, 32]]
     _, xedges, yedges = np.histogram2d(xpos, ypos, bins=bins, range=range)
     out_hist = np.zeros((len(xedges) - 1, len(yedges) - 1))
     for i, xe in enumerate(xedges[:-1]):
