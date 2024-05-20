@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def import_all_data(folder_name, num_mice=1, urine_frame_thresh=30, urine_heat_thresh=70, block=None,
+def import_all_data(folder_name, num_mice=1, urine_frame_thresh=60, urine_heat_thresh=75, block=None,
                     bypass_peetect=False, urine_output_vid_path=None, show_all=True, start_t_sec=0, run_t_sec=None,
                     samp_rate=40):
     """
@@ -71,6 +71,7 @@ def import_all_data(folder_name, num_mice=1, urine_frame_thresh=30, urine_heat_t
         if len(urine_data) > 0:
             urine_seg = urine_segmentation(urine_data)
             urine_mouse = (urine_data[:, 1] > 0).astype(int)
+            # Dormant until the future. Finding urine source by distance
             # urine_mouse = get_urine_source(mice_cents, urine_data, urine_seg)
 
     mouse_list = []
