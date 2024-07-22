@@ -1,168 +1,136 @@
-import matplotlib.colors
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.animation import FuncAnimation
-from territorytools.io import import_all_data
-from territorytools.behavior import xy_to_territory
-import cv2
+from matplotlib import cm
+from behavior import get_diadic_behavior
+from urine import urine_across_time
 
 
-def add_territory_circle(ax, block=None):
-    circ = Circle((0, 0), radius=30.38, facecolor=(0.9, 0.9, 0.9), edgecolor=(0.2, 0.2, 0.2), linestyle='--')
+def add_territory_circle(ax, block=None, rad=32):
+    circ = Circle((0, 0), radius=rad, facecolor=(0.9, 0.9, 0.9), edgecolor=(0.2, 0.2, 0.2), linestyle='--')
     ax.add_patch(circ)
     if block == 'block0':
-        ax.plot([0, 0], [0, -30.48], color=(0.2, 0.2, 0.2), linestyle='--')
-        ax.plot([0, 30.48*np.sin(np.radians(60))], [0, 30.48*np.cos(np.radians(60))], color=(0.2, 0.2, 0.2), linestyle='--')
-        ax.plot([0, 30.48 * np.sin(np.radians(-60))], [0, 30.48 * np.cos(np.radians(-60))], color=(0.2, 0.2, 0.2),
+        ax.plot([0, 0], [0, -rad], color=(0.2, 0.2, 0.2), linestyle='--')
+        ax.plot([0, rad*np.sin(np.radians(60))], [0, rad*np.cos(np.radians(60))], color=(0.2, 0.2, 0.2), linestyle='--')
+        ax.plot([0, rad * np.sin(np.radians(-60))], [0, rad * np.cos(np.radians(-60))], color=(0.2, 0.2, 0.2),
                 linestyle='--')
 
 
-def data_movie(optical_vid, therm_vid, run_dicts, block, num_frames=800, save_path=None):
-    num_mice = len(run_dicts)
-    f, axs = plt.subplots(1, 2, figsize=(11, 5))
-    # op_vid = cv2.VideoCapture(optical_vid)
-    t_vid = cv2.VideoCapture(therm_vid)
-    t_vid.set(cv2.CAP_PROP_POS_FRAMES, 5)
-    # o_im = axs[0].imshow(np.zeros((int(op_vid.get(4)), int(op_vid.get(3)))), aspect='auto')
-    t_im = axs[0].imshow(np.zeros((int(t_vid.get(4)), int(t_vid.get(3)))))
-    axs[0].set_xticks([])
-    axs[0].set_yticks([])
+def plot_run(run_data, md, ax=None):
+    if ax is None:
+        ax = plt.gca()
+    cols = ['tab:blue', 'tab:orange']
+    dist_btw_mice, looking_ang = [], []
+    if md['block'] == '0':
+        dist_btw_mice, looking_ang = get_diadic_behavior(run_data[0]['x_cm'], run_data[0]['y_cm'], run_data[0]['angle'],
+                                                         run_data[1]['x_cm'], run_data[1]['y_cm'])
+    ind = 0
+    for m, d in enumerate(run_data):
+        ut = urine_across_time(d['urine_data'], len_s=len(d['x_cm'])/40)
+        ut[ut > 1000] = np.nan
+        ut = (ut > 0).astype(int)
+        b_feats = [d['x_cm'], d['y_cm'], d['velocity'], d['angle'], ut]
+        for ft in b_feats:
+            norm_f = (ft - np.nanmin(ft)) / (np.nanmax(ft) - np.nanmin(ft))
+            ax.plot(norm_f - ind, c=cols[m])
+            ind += 1.2
 
-    ter_cols = ['tab:green', 'tab:orange', 'tab:gray']
-    add_territory_circle(axs[1], block)
-
-    arrows = []
-    for i in range(num_mice):
-        arrows.append(axs[1].plot([0, 0], [1, 1], color=ter_cols[i], marker='o', markevery=2, linewidth=4,
-                                  label='Mouse: ' + str(i))[0])
-
-    # u_time_cmap = plt.get_cmap('summer').resampled(num_frames)
-    # u_time_colors = u_time_cmap(np.linspace(0, 1, num_frames))
-    # plt.colorbar(cmap=u_time_cmap, ax=axs[2])
-    u_scat = [axs[1].scatter([], [], facecolor='k', marker=',', s=1) for ind in range(num_mice)]
-    axs[1].set_xlim(-32, 32)
-    axs[1].set_ylim(-32, 32)
-    axs[1].set_title('Output Data')
-    axs[1].set_xlabel('X Position (cm)')
-    axs[1].set_ylabel('Y Position (cm)')
-    axs[1].legend()
+    if len(dist_btw_mice) > 0:
+        fts = [dist_btw_mice, looking_ang]
+        for f in fts:
+            norm_f = (f - np.nanmin(f)) / (np.nanmax(f) - np.nanmin(f))
+            ax.plot(norm_f - ind, c='k')
+            ind += 1.2
 
 
+def plot_cdfs(group_id, group_data, group_info, ax_list):
+    def calc_cdf(data):
+        return np.cumsum(data) / np.sum(data)
 
-    def show_frame(t):
-        # _, op_f = op_vid.read()
-        _, t_f = t_vid.read()
-
-        # o_im.set_data(op_f)
-        t_im.set_data(t_f[..., ::-1])
-        for i, (m, a, u_s) in enumerate(zip(run_dicts, arrows, u_scat)):
-            x = m['x_cm'][t]
-            y = m['y_cm'][t]
-            t_id = xy_to_territory(x, y)
-            ang = m['angle'][t]
-            a.set_xdata([x, x + 2*np.cos(ang)])
-            a.set_ydata([y, y + 2*np.sin(ang)])
-            a.set_markeredgecolor(ter_cols[t_id])
-            if len(m['urine_data']) > 0:
-                u_inds = m['urine_data'][:, 0] == t
-                if sum(u_inds) > 0:
-                    cur_pnts = np.vstack((u_s._offsets, m['urine_data'][u_inds, 1:]))
-                    # new_pnts = np.unique(cur_pnts, axis=0)
-                    # u_s._facecolors = np.vstack((u_s._facecolors, np.repeat(u_time_colors[t, :][:, None], sum(u_inds), axis=1).T))
-                    u_s._offsets = cur_pnts
-                    new_c = np.array(matplotlib.colors.to_rgba(ter_cols[i]))
-                    new_c[:3] = (t/num_frames)*new_c[:3]
-                    new_cols = np.repeat(new_c[:, None], sum(u_inds), axis=1).T
-                    u_s._facecolors = np.vstack((u_s._facecolors, new_cols))
-
-    anim = FuncAnimation(fig=f, func=show_frame, frames=num_frames, interval=40)
-    anim.save(save_path, fps=80)
+    for d in group_data:
+        cols = ['tab:blue', 'tab:orange']
+        for i in range(len(d)):
+            ut = urine_across_time(d[i]['urine_data'], len_s=77050 / 40)
+            ut[ut > 1000] = np.nan
+            ut = (ut > 0).astype(int)
+            cdf = calc_cdf(ut)
+            t = np.linspace(0, len(ut) / 40, len(ut))
+            ax_list[i].plot(t, cdf, c=cols[i])
 
 
-if __name__ == '__main__':
-    run_dir = 'D:/TerritoryTools/demo/demo_run/'
-    peetect_vid = 'D:/TerritoryTools/demo/peetect_demo.mp4'
-    mouse_dicts = import_all_data(run_dir, num_mice=2, run_t_sec=120, block='block0', bypass_peetect=False,
-                                  urine_output_vid_path=peetect_vid)
-    print('Visualizing data...')
-    data_movie(run_dir + 'demo_optical.mp4', peetect_vid, mouse_dicts, 'block0', num_frames=120*40-40,
-               save_path='D:/TerritoryTools/demo/demo_out.mp4')
+def urine_prob_dep(run_data, run_info):
+    x_fix = [1, -1]
+    o_ind = [1, 0]
+    f, axs = plt.subplots(2, 1)
+    for i, (d, x, o) in enumerate(zip(run_data, x_fix, o_ind)):
+        ut = urine_across_time(d['urine_data'], len_s=77050 / 40)
+        ut = (ut > 0).astype(int)
+        o_x = x*run_data[o]['x_cm']
+        ut = ut[:len(o_x)]
+        tot_u = np.sum(ut)
+        dist_between, _ = get_diadic_behavior(run_data[0]['x_cm'], run_data[0]['y_cm'], run_data[0]['angle'],
+                                              run_data[1]['x_cm'], run_data[1]['y_cm'])
+        bs = np.linspace(0, 60, 61)
+        bin_ox = np.digitize(dist_between, bins=bs)
+        # bs = np.linspace(0, 32, 33)
+        # bin_ox = np.digitize(o_x, bins=bs)
+        probs = []
+        prior = []
+        for b in bs:
+            this_bin = bin_ox == b
+            probs.append(np.sum(ut[this_bin]) / tot_u)
+            prior.append(np.sum(this_bin)/len(bin_ox))
+        prior = 100*np.array(prior)
+        probs = 100*np.array(probs)
+        axs[i].bar(bs, probs, align='edge', color='b', alpha=0.5)
+        axs[i].bar(bs, prior, align='edge', color='k', alpha=0.5)
+        axs[i].plot(bs, probs / prior)
+    title = str(run_info)
+    delimiters = ["\'", "{", "}", ":", ',']
+
+    for delimiter in delimiters:
+        title = " ".join(title.split(delimiter))
+    axs[0].set_title(title)
 
 
-# def behavioral_raster(rasters, ax=plt.gca, fs=1):
-#     cols = ['tab:green', 'tab:orange', 'tab:gray', 'c', 'm', 'r', 'k']
-#     len_behav, num_rasts = np.shape(rasters)
-#     rast_im = 255*np.ones((1, len_behav, 3))
-#     for i in range(num_rasts):
-#         col = to_rgb(cols[i])
-#         inds = np.where(rasters[:, i])[0]
-#         rast_im[:, inds, :] = col
-#     ax.imshow(rast_im, aspect='auto')
-#     ax.set_xlim([0, len_behav])
-#     ax.spines[['top', 'right', 'left', 'bottom']].set_visible(False)
-#     x_ticks = ax.get_xticks()
-#     x_ticks = x_ticks[x_ticks < len_behav]
-#     ax.set_xticks(x_ticks, labels=x_ticks/fs)
-#     ax.get_yaxis().set_visible(False)
+def show_urine_segmented(expand_urine, labels):
+    e = [20, 0]
+    a = [-45, 0]
+    for i in range(2):
+        f = plt.figure()
+        ax = f.add_subplot(projection='3d')
+        ax.set_facecolor("white")
+        arc_x = 30.48*np.sin(np.linspace(np.pi, 1*np.pi/3, 100))
+        arc_y = 30.48 * np.cos(np.linspace(np.pi, 1*np.pi /3, 100))
+        plt.plot(np.zeros(100), arc_x, arc_y, 'k--')
+        plt.plot([0, 0], [0, 0], [0, -30.48], 'k--')
+        plt.plot([0, 0], [0, 30.48*np.sin(np.pi/3)], [0, 30.48*np.cos(np.pi/3)], 'k--')
+        ax.scatter(expand_urine[:, 0], expand_urine[:, 1], expand_urine[:, 2], c=labels, cmap='tab20')
+        ax.set_ylim(-5, 32)
+        ax.set_zlim(-32, 15)
+        ax.view_init(elev=e[i], azim=a[i])
 
-# def hist_t(g, ts, info):
-#     group_t = np.nan*np.zeros((len(ts), len(ts[0])))
-#     count_acc = []
-#     for ind, t in enumerate(ts):
-#         group_t[ind, :] = t
-#         vals, bin_edges = np.histogram(group_t, bins=36, range=[-np.pi, np.pi])
-#         norm_vals = 100*(vals/sum(vals))
-#         count_acc.append(norm_vals)
-#
-#     count_acc = np.array(count_acc)
-#     mean_vals = np.mean(count_acc, axis=0)
-#     dev = np.std(count_acc, axis=0)
-#     n = np.shape(count_acc)[0]
-#     sem = 1.96*(dev/np.sqrt(n))
-#     ax = plt.subplot(projection='polar')
-#     r_edge = 1.2*max(mean_vals)
-#     pts = [-np.pi/2, 5*np.pi/6, np.pi/6]
-#     for p in pts:
-#         ax.plot([0, p], [0, r_edge], ':k', linewidth=2)
-#
-#     # cl = get_chance_line(group_t)
-#     cl = 100*np.ones(len(mean_vals))/len(mean_vals)
-#     vals = np.hstack((mean_vals, mean_vals[0]))
-#     sem = np.hstack((sem, sem[0]))
-#     cl = np.hstack((cl, cl[0]))
-#     ax.plot(bin_edges, cl, color=[0, 0, 0], linewidth=2)
-#     ax.plot(np.linspace(np.pi/6, 5*np.pi/6, 120), r_edge*np.ones(120), color=[0.5, 0.5, 0.5], linewidth=2)
-#     ax.plot(np.linspace(5*np.pi/6, 1.5*np.pi, 120), r_edge*np.ones(120), color=[0.2, 0.6, 0.2], linewidth=2)
-#     ax.plot(np.linspace(np.pi/6, -np.pi/2, 120), r_edge*np.ones(120), color=[0.8, 0.5, 0.2], linewidth=2)
-#     ax.plot(bin_edges, vals + sem, color=[0.4, 0.4, 0.8], linewidth=2, linestyle='--')
-#     ax.plot(bin_edges, vals - sem, color=[0.4, 0.4, 0.8], linewidth=2, linestyle='--')
-#     ax.plot(bin_edges, vals, color=[0, 0, 0.8], linewidth=4)
-#     ax.set_rlabel_position(0)
-#     ax.set_xticklabels([])
-#     ax.set_yticks(ax.get_yticks()[:-1])
-#     ax.grid(axis="x")
-#     plt.show()
-# def get_chance_line(group_ts):
-#     np.random.seed(5)
-#     group_ts = np.degrees(group_ts)
-#     n = np.shape(group_ts)[0]
-#     ang_options = np.arange(-170, 170, 10)
-#     hist_acc = []
-#     num_i = 100
-#     for i in range(num_i):
-#         ang_inds = np.random.randint(0, len(ang_options), n)
-#         these_angs = ang_options[ang_inds]
-#         shift_ts = group_ts + np.expand_dims(these_angs, axis=1)
-#         fix_inds = np.where(shift_ts > 180)
-#         shift_ts[fix_inds] = shift_ts[fix_inds] - 360
-#         fix_inds1 = np.where(shift_ts < -180)
-#         shift_ts[fix_inds1] = shift_ts[fix_inds1] + 360
-#         shift_ts = np.radians(shift_ts)
-#         for j in range(n):
-#             vals, bin_edges = np.histogram(shift_ts[j, :], bins=36, range=[-np.pi, np.pi])
-#             norm_vals = vals/sum(vals)
-#             hist_acc.append(norm_vals)
-#     out_acc = np.array(hist_acc)
-#     chance_line = 100*np.mean(out_acc, axis=0)
-#     return chance_line
+
+def show_urine_segmented_video(expand_urine, labels, window=300):
+    num_f = int(max(expand_urine[:, 0])) + window
+    f = plt.figure()
+    ax = f.add_subplot(projection='3d')
+    ax.set_xlim(0, window)
+    ax.set_ylim(-32, 32)
+    ax.set_zlim(-32, 32)
+    s = ax.scatter([], [], [])
+    set3 = cm.get_cmap('Set3', len(np.unique(labels))).colors
+
+    def update(frame):
+        data_in_win = np.logical_and(expand_urine[:, 0] > frame, expand_urine[:, 0] < frame + window)
+        frame_data = expand_urine[data_in_win, :]
+        if len(frame_data) > 0:
+            s._offsets3d = (frame_data[:, 0] - frame, frame_data[:, 1], frame_data[:, 2])
+            s.set_color(set3[labels[data_in_win], :])
+        return s
+
+    print('Running animation...')
+    anim = FuncAnimation(fig=f, func=update, frames=num_f, interval=1)
+    plt.show()
+    # anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
