@@ -1,0 +1,21 @@
+NWBFile:
+  session_id: # required by DANDI (need to get via registration)
+  session_description: # required by NWB
+  session_start_time: # required by NWB
+  lab: "Falkner Lab"
+  institution: "Princeton University"
+  experimenter:
+    - "Allen, David"
+  experiment_description:
+  keywords:
+  notes:
+
+Subject:
+  subject_id: # required by DANDI (need to get via registration)
+  description:
+  species: "Mus musculus" # Latin binomial, e.g. "Mus musculus"; required by DANDI
+  genotype: "wt"
+  strain: "CD1"
+  sex: "M"
+  weight:
+  date_of_birth:  # required by DANDI (or age, ISO8601 format)
