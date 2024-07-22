@@ -5,3 +5,4 @@ matplotlib
 scipy
 sleap-io
 scikit-learn
+pyyaml
