@@ -3,17 +3,18 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.animation import FuncAnimation
 from matplotlib import cm
-from behavior import get_diadic_behavior
-from urine import urine_across_time
+from territorytools.behavior import get_diadic_behavior, compute_over_spatial_bin, avg_angs
+from scrap.urine_old import urine_across_time
 
 
-def add_territory_circle(ax, block=None, rad=32):
+def add_territory_circle(ax, block=None, rad=30.48):
     circ = Circle((0, 0), radius=rad, facecolor=(0.9, 0.9, 0.9), edgecolor=(0.2, 0.2, 0.2), linestyle='--')
     ax.add_patch(circ)
     if block == 'block0':
-        ax.plot([0, 0], [0, -rad], color=(0.2, 0.2, 0.2), linestyle='--')
-        ax.plot([0, rad*np.sin(np.radians(60))], [0, rad*np.cos(np.radians(60))], color=(0.2, 0.2, 0.2), linestyle='--')
-        ax.plot([0, rad * np.sin(np.radians(-60))], [0, rad * np.cos(np.radians(-60))], color=(0.2, 0.2, 0.2),
+        c = (1, 1, 1)
+        ax.plot([0, 0], [0, -rad], color=c, linestyle='--')
+        ax.plot([0, rad*np.sin(np.radians(60))], [0, rad*np.cos(np.radians(60))], color=c, linestyle='--')
+        ax.plot([0, rad * np.sin(np.radians(-60))], [0, rad * np.cos(np.radians(-60))], color=c,
                 linestyle='--')
 
 
@@ -51,11 +52,10 @@ def plot_cdfs(group_id, group_data, group_info, ax_list):
     for d in group_data:
         cols = ['tab:blue', 'tab:orange']
         for i in range(len(d)):
-            ut = urine_across_time(d[i]['urine_data'], len_s=77050 / 40)
-            ut[ut > 1000] = np.nan
-            ut = (ut > 0).astype(int)
-            cdf = calc_cdf(ut)
-            t = np.linspace(0, len(ut) / 40, len(ut))
+            ut = urine_across_time(d[i]['urine_data'], len_s=len(d[i]['x_cm'])/40)
+            u_on = (np.diff(ut) > 0.5).astype(int)
+            cdf = calc_cdf(u_on)
+            t = np.linspace(0, len(u_on) / 40, len(u_on))
             ax_list[i].plot(t, cdf, c=cols[i])
 
 
@@ -134,3 +134,97 @@ def show_urine_segmented_video(expand_urine, labels, window=300):
     anim = FuncAnimation(fig=f, func=update, frames=num_f, interval=1)
     plt.show()
     # anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
+
+
+def circle_hist(x, y, bins=36, ax=None):
+    if ax is None:
+        ax = plt.subplot(projection='polar')
+
+    theta = np.arctan2(y, x)
+    vals, bin_edges = np.histogram(theta, bins=bins, range=[-np.pi, np.pi])
+    norm_vals = 100*(vals/sum(vals))
+
+    r_edge = 1.2*max(norm_vals)
+    pts = [-np.pi/2, 5*np.pi/6, np.pi/6]
+    for p in pts:
+        ax.plot([0, p], [0, r_edge], ':k', linewidth=2)
+
+    norm_vals = np.hstack((norm_vals, norm_vals[0]))
+    ax.plot(np.linspace(np.pi/6, 5*np.pi/6, 120), r_edge*np.ones(120), color=[0.5, 0.5, 0.5], linewidth=2)
+    ax.plot(np.linspace(5*np.pi/6, 1.5*np.pi, 120), r_edge*np.ones(120), color=[0.2, 0.6, 0.2], linewidth=2)
+    ax.plot(np.linspace(np.pi/6, -np.pi/2, 120), r_edge*np.ones(120), color=[0.8, 0.5, 0.2], linewidth=2)
+    ax.plot(bin_edges, norm_vals, color=[0, 0, 0.8], linewidth=4)
+    ax.set_rlabel_position(0)
+    ax.set_xticklabels([])
+    ax.set_yticks(ax.get_yticks()[:-1])
+    ax.grid(axis="x")
+
+
+def motion_flow_field(x, y, ax=None, future_frames=40, bin_s=50):
+    if ax is None:
+        f, ax = plt.subplots(1, 1)
+
+    xy_data = np.vstack((x, y)).T
+    angs = []
+    rads = []
+    for cent0, cent1 in zip(xy_data[:-future_frames, :], xy_data[future_frames:, :]):
+        rel_xy = cent1 - cent0
+        heading = np.arctan2(rel_xy[1], rel_xy[0])
+        rads.append(np.linalg.norm(rel_xy))
+        angs.append(heading)
+    hist, x_edges, y_edges = compute_over_spatial_bin(xy_data[:-future_frames, 0], xy_data[:-future_frames, 1],
+                                        np.array(angs), avg_angs, range=[[-32, 32], [-32, 32]], bins=bin_s)
+    hist_r, x_edges, y_edges = compute_over_spatial_bin(xy_data[:-future_frames, 0], xy_data[:-future_frames, 1],
+                                        np.array(rads), np.nanmedian, range=[[-32, 32], [-32, 32]], bins=bin_s)
+    ax.quiver(x_edges[:-1], y_edges[:-1], hist_r*np.sin(hist), hist_r*np.cos(hist))
+    # ax.quiver(x_edges[:-1], y_edges[:-1], np.sin(hist), np.cos(hist))
+
+
+def plot_mean_sem(data_mat: np.ndarray, ax=None, col='r', x=None):
+    if ax is None:
+        ax = plt.gca()
+
+    if x is None:
+        x = np.linspace(0, data_mat.shape[0], data_mat.shape[0])
+
+    mean = np.nanmean(data_mat, axis=1)
+    dev = np.std(data_mat, axis=1)
+    n = np.shape(data_mat)[1]
+    sem = dev / np.sqrt(n)
+    # sem_path0 = np.vstack((x, mean + sem)).T
+    # sem_path1 = np.flipud(np.vstack((x, mean - sem)).T)
+    # sem_path = np.vstack((sem_path0, sem_path1))
+    # sem_patch = plt.Polygon(sem_path, facecolor=col, alpha=0.5)
+    # ax.add_patch(sem_patch)
+    ax.plot(x, mean, c=col)
+    ax.plot(x, mean + sem, c=col, linestyle='--')
+    ax.plot(x, mean - sem, c=col, linestyle='--')
+
+
+def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False):
+    if ax is None:
+        ax = plt.gca()
+
+    im = np.histogram2d(x, y, bins=bins, range=((-32, 32), (-32, 32)))[0].T
+    im = im / len(x)
+    ax.set_xlim(-32, 32)
+    ax.set_ylim(-32, 32)
+    im_obj = ax.imshow(im, extent=(-32, 32, -32, 32), interpolation='none', origin='lower', vmin=vmin, vmax=vmax, cmap='plasma')
+    if colorbar:
+        plt.colorbar(im_obj)
+    return im
+
+
+def draw_pvals(ax, pvals, x_pts):
+    start_y = ax.get_ylim()[1] * 1.01
+    for p, x in zip(pvals, x_pts):
+        if p < 0.05:
+            ax.plot([x[0], x[1]], [start_y, start_y], c='k')
+        sig_sym = ''
+        if 0.01 <= p < 0.05:
+            sig_sym = '*'
+        if 0.001 <= p < 0.01:
+            sig_sym = '**'
+        if p < 0.001:
+            sig_sym = '***'
+        ax.text((x[1] - x[0])/2 + x[0], start_y * 1.01, sig_sym, fontweight='bold', horizontalalignment='center')
