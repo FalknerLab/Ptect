@@ -1,4 +1,4 @@
-import behavior as tdt
+import territorytools.behavior as tdt
 
 
 def make_dict(info_string, delimiter):
@@ -52,8 +52,17 @@ class BasicRun:
         self.info = info_dict
         self.data = data
 
-    def get_key_val(self, key_name):
-        return self.info[key_name]
+    def get_key_val(self, key_name: str, nest_dict=None):
+        if nest_dict is None:
+            nest_dict = self.info
+        key_split = key_name.split('/')
+        out_val = None
+        if len(key_split) > 1:
+            n_dict = nest_dict[key_split[0]]
+            out_val = self.get_key_val(''.join(key_split[1:]), nest_dict=n_dict)
+        else:
+            out_val = nest_dict[key_split[0]]
+        return out_val
 
     def add_key_val(self, key_name, key_val):
         self.info[key_name] = key_val
@@ -96,7 +105,6 @@ class BasicExp:
         return group_out
 
     def compute_across_group(self, key_name, key_val, func, *args):
-        group_out = dict()
         group_runs = self.get_runs_from_key_val(key_name, key_val)
         group_data, group_info = self.get_group_data_info(group_runs)
         group_out = func(key_val, group_data, group_info, *args)
