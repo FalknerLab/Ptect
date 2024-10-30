@@ -3,8 +3,8 @@ import yaml
 import shutil
 import h5py
 import numpy as np
-from behavior import get_territory_data, interp_behavs, compute_preferences, make_design_matrix, rotate_xy
-from urine import Peetector, urine_segmentation
+from territorytools.behavior import get_territory_data, interp_behavs, compute_preferences, make_design_matrix, rotate_xy
+from scrap.urine_old import Peetector, urine_segmentation
 
 
 def import_all_data(folder_name, urine_time_thresh=1, urine_heat_thresh=110, show_all=True, start_t_sec=0, samp_rate=40):
@@ -23,7 +23,7 @@ def import_all_data(folder_name, urine_time_thresh=1, urine_heat_thresh=110, sho
     """
 
     if not valid_dir(folder_name):
-        raise Exception('Folder does not contain all territory data files (top.mp4, top.h5, thermal.avi, thermal.h5)')
+        raise Exception('Folder does not contain all territory data files (top.mp4, top.h5, thermal.mp4, thermal.h5)')
 
     top_vid, top_data, therm_vid, therm_data, fixed_top, fixed_therm, md_path, pt_vid, pt_data, out_data = find_territory_files(folder_name)
     md_dict = yaml.safe_load(open(md_path))
@@ -62,9 +62,6 @@ def import_all_data(folder_name, urine_time_thresh=1, urine_heat_thresh=110, sho
         vels.append(interp_vel)
         t_ids.append(t_id)
 
-    start_f = int(start_t_sec * samp_rate)
-
-    run_f = len(cent_x)
     urine_seg = []
     urine_mouse = []
     if out_data is None:
@@ -72,8 +69,9 @@ def import_all_data(folder_name, urine_time_thresh=1, urine_heat_thresh=110, sho
         peetect.add_dz(zone=fr'block{block}')
         f_parts = os.path.split(folder_name)[-1]
         pt_vid_path = os.path.join(folder_name, f_parts + '_ptvid.mp4')
-        urine_data = peetect.peetect_frames(time_thresh=urine_time_thresh, save_vid=pt_vid_path, show_vid=show_all,
-                                            start_frame=start_f, num_frames=None)
+        # urine_data = peetect.peetect_frames(time_thresh=urine_time_thresh, save_vid=pt_vid_path, show_vid=show_all,
+        #                                     start_frame=start_f, num_frames=None)
+        urine_data = peetect.peetect_v2(save_vid=pt_vid_path, show_vid=show_all, cool_thresh=40)
         if len(urine_data) > 0:
             urine_seg = urine_segmentation(urine_data)
             urine_mouse = np.zeros_like(urine_data[:, 1])
@@ -140,7 +138,7 @@ def find_territory_files(root_dir: str):
             peetect_vid = os.path.join(root_dir, f)
         if f_splt[-1] == 'ptdata.npy':
             peetect_data = os.path.join(root_dir, f)
-        if '.npy' in f_splt[-1]:
+        if 'output.npy' in f_splt[-1]:
             out_data = os.path.join(root_dir, f)
     return top_vid, top_data, therm_vid, therm_data, fixed_top, fixed_therm, metadata_file, peetect_vid, peetect_data, out_data
 
@@ -195,6 +193,9 @@ def clean_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504)):
         out_ts = tracks[0][None, :]
         last_cent = np.nanmean(out_ts[0, :, :, 0], axis=1)
         for i in range(len_t):
+            if i == 0 and np.all(np.isnan(last_cent)):
+                first_cent_i = np.argwhere(~np.all(np.all(np.isnan(out_ts[0]), axis=0), axis=0))[0][0]
+                last_cent = np.nanmean(out_ts[0, :, :, first_cent_i], axis=1)
             if i % 1000 == 0:
                 print('Cleaning slp file, on frame: ', i)
             this_cent = np.nanmean(tracks[:, :, :, i], axis=2)
@@ -277,7 +278,7 @@ def package_data(root_dir):
         if not os.path.exists(run_dir):
             os.mkdir(run_dir)
         shutil.move(os.path.join(root_dir, f), run_dir)
-        
+
 
 def make_nwb_yamls(root_dir, key_fmt, key_del='_', val_del='_'):
     for f in os.listdir(root_dir):
@@ -285,7 +286,7 @@ def make_nwb_yamls(root_dir, key_fmt, key_del='_', val_del='_'):
         if os.path.isdir(os.path.join(root_dir, f)):
             append_dict = make_dict(key_fmt, f, key_del=key_del, val_del=val_del)
             yaml_file = os.path.join(root_dir, f, fr'{f}_metadata.yaml')
-            shutil.copy('nwb_metadata.yaml', yaml_file)
+            shutil.copy('../resources/nwb_metadata.yaml', yaml_file)
             yaml_obj = open(yaml_file, 'r')
             yaml_dict = yaml.safe_load(yaml_obj)
             unique_keys = np.unique(list(yaml_dict.keys()) + list(append_dict.keys())).astype(list)
@@ -336,3 +337,21 @@ def make_save_design_matrix(root_dir):
                 out_file.close()
             except IndexError:
                 print(out_name)
+
+
+def make_anipose_directory(raw_data_folder, out_path):
+    cam_dict = {'19060809': 'mid', '19194088': 'side', '19281943': 'top', '22049506': 'back'}
+    targets = list(cam_dict.keys())
+    sub_folds = os.listdir(raw_data_folder)
+    for f in sub_folds:
+        splitund = f.split('_')
+        if splitund[-1] == 'thermal':
+            print(f'os.mkdir(os.path.join({out_path}, {f}))')
+        else:
+            splitdot = f.split('.')
+            if splitdot[-1] in targets:
+                print(f'os.mkdir(os.path.join({out_path}, {f}))')
+
+
+if __name__ == '__main__':
+    make_anipose_directory('Z:\\Dave\\LS Territory\\PPsync4\\runs\\PPsync4_Sub_DAB010_Stim_DAB015_RNI_Block0', 'Z:\\Dave\\LS Territory\\PPsync4\\runs\\PPsync4_Sub_DAB010_Stim_DAB015_RNI_Block0_ani')
