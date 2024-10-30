@@ -6,3 +6,5 @@ scipy
 sleap-io
 scikit-learn
 pyyaml
+gdown
+PyQt5

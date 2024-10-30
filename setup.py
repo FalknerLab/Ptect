@@ -13,5 +13,7 @@ setup(
     packages=['territorytools'],
     python_requires=">=3.8",
     install_requires=reqs,
+    entry_points={"console_scripts": ["territorytools=territorytools.run:main",
+                  "territorytools-demo=tests.run_demo:main"]},
     license_files=("LICENCE",),
     license="BSD-3 Licence")
