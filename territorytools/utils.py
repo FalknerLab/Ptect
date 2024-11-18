@@ -1,4 +1,6 @@
 import os
+import h5py
+import numpy as np
 
 
 def find_rename_cam_videos(root_dir, cam_dict=None):
@@ -24,6 +26,169 @@ def find_rename_cam_videos(root_dir, cam_dict=None):
             find_rename_cam_videos(next_dir, cam_dict=cam_dict)
 
 
+def fix_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='fixed', dist_thresh=25, chunk_sz=16384):
+    rot_dict = {'rni': 0,
+                'none': 0,
+                'irn': 120,
+                'nir': 240}
+    rot_ang = orientation
+    if type(orientation) is str:
+        rot_ang = rot_dict[orientation]
+    new_file = slp_h5.split('.')[0] + '_' + suff + '.h5'
+    slp_data = h5py.File(slp_h5, 'r')
+    fixed_file = h5py.File(new_file, 'a')
+    len_t = slp_data['tracks'].shape[3]
+    node_num = slp_data['tracks'].shape[2]
+    out_name = ''
+    out_t_scores = np.zeros((1, len_t))
+    out_i_scores = np.zeros((1, len_t))
+    out_p_scores = np.zeros((1, node_num, len_t))
+    out_t_occs = np.zeros((len_t, 1))
+    out_ts = None
+    num_chks = int(np.ceil(len_t/chunk_sz))
+    if block:
+        out_name = slp_data['track_names'][0][:]
+        out_ts = slp_data['tracks'][0][None, :]
+        last_cent = np.nanmean(out_ts[0, :, :, 0], axis=1)
+        for c in range(num_chks):
+            print('Cleaning slp file, on frame: ', c*chunk_sz)
+            inds = np.arange(c*chunk_sz, (c+1)*chunk_sz)
+            inds = inds[inds < len_t]
+            tracks = slp_data['tracks'][:, :, :, inds]
+            t_scores = slp_data['tracking_scores'][:, inds]
+            i_scores = slp_data['instance_scores'][:, inds]
+            p_scores = slp_data['point_scores'][:, :, inds]
+            t_occupancy = slp_data['track_occupancy'][inds, :]
+            for i in range(len(inds)):
+                if i == 0 and c == 0 and np.all(np.isnan(last_cent)):
+                    first_cent_i = np.argwhere(~np.all(np.all(np.isnan(out_ts[0]), axis=0), axis=0))[0][0]
+                    last_cent = np.nanmean(out_ts[0, :, :, first_cent_i], axis=1)
+
+                this_cent = np.nanmean(tracks[:, :, :, i], axis=2)
+                dists = np.linalg.norm(this_cent - last_cent, axis=1)
+                if not np.all(np.isnan(dists)):
+                    in_thresh = dists < dist_thresh
+                    if np.any(in_thresh):
+                        i_scores[~in_thresh, i] = -np.inf
+                    best_track = np.nanargmax(i_scores[:, i])
+                    out_t_scores[:, inds[i]] = t_scores[best_track, i]
+                    out_p_scores[0, :, inds[i]] = p_scores[best_track, :, i]
+                    out_i_scores[0, inds[i]] = i_scores[best_track, i]
+                    last_cent = this_cent[best_track, :]
+                    out_t_occs[inds[i], 0] = t_occupancy[i, best_track]
+                    out_ts[0, :, :, inds[i]] = tracks[best_track, :, :, i]
+
+    # else:
+    #     out_name = slp_data['track_names'][:2][:]
+    #     out_ts = np.nan * np.zeros_like(tracks[:2, :, :, :])
+    #     for i in range(len_t):
+    #         if i % 1000 == 0:
+    #             print('Cleaning slp file, on frame: ', i)
+    #         this_cent = np.nanmean(tracks[:, :, :, i], axis=2)
+    #         rel_y = this_cent[:, 0] - cent_xy[0]
+    #         rel_x = this_cent[:, 1] - cent_xy[1]
+    #         rot_x, rot_y = rotate_xy(rel_x, rel_y, rot_ang)
+    #         as_t = np.degrees(np.arctan2(rot_y, rot_x))
+    #         rot_t = as_t
+    #         in_res = rot_t < 0
+    #         in_int = rot_t > 0
+    #         if np.any(in_res):
+    #             res_ind = np.where(in_res)[0][0]
+    #             t_scores[0, i] = t_scores[res_ind, i]
+    #             p_scores[0, :, i] = p_scores[res_ind, :, i]
+    #             i_scores[0, i] = i_scores[res_ind, i]
+    #             t_occupancy[i, 0] = 1
+    #             out_ts[0, :, :, i] = tracks[res_ind, :, :, i]
+    #         else:
+    #             t_scores[0, i] = np.nan
+    #             p_scores[0, :, i] = np.ones_like(p_scores[0, :, i]) * np.nan
+    #             i_scores[0, i] = np.nan
+    #             t_occupancy[i, 0] = 0
+    #             out_ts[0, :, :, i] = np.ones_like(out_ts[0, :, :, 0]) * np.nan
+    #         if np.any(in_int):
+    #             int_ind = np.where(in_int)[0][0]
+    #             t_scores[1, i] = t_scores[int_ind, i]
+    #             p_scores[1, :, i] = p_scores[int_ind, :, i]
+    #             i_scores[1, i] = i_scores[int_ind, i]
+    #             t_occupancy[i, 1] = 1
+    #             out_ts[1, :, :, i] = tracks[int_ind, :, :, i]
+    #         else:
+    #             t_scores[1, i] = np.nan
+    #             p_scores[1, :, i] = np.ones_like(p_scores[1, :, i]) * np.nan
+    #             i_scores[1, i] = np.nan
+    #             t_occupancy[i, 1] = 0
+    #             out_ts[1, :, :, i] = np.ones_like(out_ts[1, :, :, 0]) * np.nan
+    fixed_file['track_names'] = [out_name]
+    fixed_file['tracking_scores'] = out_t_scores
+    fixed_file['instance_scores'] = out_i_scores
+    fixed_file['point_scores'] = out_p_scores
+    fixed_file['track_occupancy'] = out_t_occs
+    fixed_file['tracks'] = out_ts
+    fixed_file['edge_inds'] = slp_data['edge_inds'][:]
+    fixed_file['edge_names'] = slp_data['edge_names'][:]
+    fixed_file['labels_path'] = ()
+    fixed_file['node_names'] = slp_data['node_names'][:]
+    fixed_file['provenance'] = ()
+    fixed_file['video_ind'] = ()
+    fixed_file['video_path'] = ()
+    return new_file
+
+
+def xy_to_cm(xy, center_pt=(325, 210), px_per_cm=225/30.48):
+    rel_xy = xy - center_pt
+    rel_xy[:, 1] = -rel_xy[:, 1]
+    cm_x = rel_xy[:, 0] / px_per_cm
+    cm_y = rel_xy[:, 1] / px_per_cm
+    return cm_x, cm_y
+
+
+def xy_to_cm_vec(xys, center_pt=(325, 210), px_per_cm=225/30.48):
+    xys_rot = []
+    for i in range(xys.shape[-1]):
+        this_xy = xys[:, :, i].T
+        cm_x, cm_y = xy_to_cm(this_xy, center_pt=center_pt, px_per_cm=px_per_cm)
+        xys_rot.append(np.vstack((cm_x, cm_y)))
+    xys_rot = np.array(xys_rot)
+    return np.moveaxis(xys_rot, 0, 2)
+
+
+def rotate_xy_vec(pts, rot_ang):
+    out_pts = []
+    for i in range(pts.shape[-1]):
+        rot_pts = rotate_xy(pts[0, :, i], pts[1, :, i], rot_ang)
+        out_pts.append(np.vstack(rot_pts))
+    xys_rot = np.array(out_pts)
+    return np.moveaxis(xys_rot, 0, 2)
+
+
+def rotate_xy(x, y, rot):
+    rot_dict = {'rni': 0,
+                'none': 0,
+                'irn': 120,
+                'nir': 240}
+    if type(rot) == str:
+        rot_deg = rot_dict[rot]
+    else:
+        rot_deg = rot
+    in_rad = np.radians(rot_deg)
+    c, s = np.cos(in_rad), np.sin(in_rad)
+    rot_mat = [[c, -s], [s, c]]
+    xy = rot_mat @ np.vstack((x, y))
+    return xy[0, :], xy[1, :]
+
+
 if __name__ == '__main__':
-    root_dir = 'Z:/Dave/LS Territory/PPsync4/runs/'
-    find_rename_cam_videos(root_dir)
+    # root_dir = 'D:/ptect_dataset/testing/kpms'
+    # for f in os.listdir(root_dir):
+    #     file_n = os.path.join(root_dir, f)
+    #     fix_sleap_h5(file_n)
+
+    root_dir = 'D:/ptect_dataset/kpms/grid_movies'
+    for f in os.listdir(root_dir):
+        f_path = os.path.join(root_dir, f)
+        f_split = f.split('.')
+        if f_split[-1] == 'mp4':
+            out_f = os.path.join(root_dir, ''.join(f_split[:-1]) + '.gif')
+            command = f'ffmpeg -i {f_path} {out_f}'
+            print(command)
+            os.system(command)
