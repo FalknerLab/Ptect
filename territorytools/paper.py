@@ -331,7 +331,7 @@ def mi_block0(b0_run_data, b0_run_info):
 
 
 if __name__ == '__main__':
-    data_dir = 'D:/TerritoryTools/data/dataset'
+    data_dir = 'D:/TerritoryTools/dataset/dataset'
     # make_save_design_matrix(data_dir)
     full_exp = load_dataset(data_dir)
     full_exp.compute_across_runs(post_clean_urine)
@@ -349,7 +349,7 @@ if __name__ == '__main__':
     # urine_synchrony(full_exp)
     # form_regression_temp(block0)
     block0.compute_across_runs(mi_block0, pass_info=True)
-    # data_path = 'D:\TerritoryTools\data\datasetv2\PPsync2_Day1_Subject_KinB1_Intruder_KinA3_Block_0_RNI_g'
+    # data_path = 'D:\TerritoryTools\dataset\datasetv2\PPsync2_Day1_Subject_KinB1_Intruder_KinA3_Block_0_RNI_g'
     # run_dict_list, run_md = import_all_data(data_dir)
     # show_urine_segmented(run_dict_list[1]['urine_data'], run_dict_list[1]['urine_segment'])
     # plt.show()
