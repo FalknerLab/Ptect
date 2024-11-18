@@ -1,6 +1,6 @@
 import gdown
 import os
-from territorytools.gui import PtectGUI
+from territorytools.gui import PtectApp
 
 
 def get_demo_data(google_drive_link, demo_fold='territorytools_demo'):
@@ -14,4 +14,4 @@ def get_demo_data(google_drive_link, demo_fold='territorytools_demo'):
 if __name__ == '__main__':
     fold_link = 'https://drive.google.com/drive/folders/1e58QlTkZTtZICjvpynQGK6FA5y0IkVGT?usp=sharing'
     demo_path = get_demo_data(fold_link)
-    gui = PtectGUI(demo_path)
+    gui = PtectApp(data_folder=demo_path)
