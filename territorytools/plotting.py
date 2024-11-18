@@ -4,7 +4,7 @@ from matplotlib.patches import Circle
 from matplotlib.animation import FuncAnimation
 from matplotlib import cm
 from territorytools.behavior import get_diadic_behavior, compute_over_spatial_bin, avg_angs
-from scrap.urine_old import urine_across_time
+from territorytools.urine import urine_across_time
 
 
 def add_territory_circle(ax, block=None, rad=30.48):
@@ -201,17 +201,21 @@ def plot_mean_sem(data_mat: np.ndarray, ax=None, col='r', x=None):
     ax.plot(x, mean - sem, c=col, linestyle='--')
 
 
-def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False):
-    if ax is None:
-        ax = plt.gca()
+def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False, limits=((-32, 32), (-32, 32)), density=True):
+    # if ax is None:
+    #     ax = plt.gca()
 
-    im = np.histogram2d(x, y, bins=bins, range=((-32, 32), (-32, 32)))[0].T
-    im = im / len(x)
-    ax.set_xlim(-32, 32)
-    ax.set_ylim(-32, 32)
-    im_obj = ax.imshow(im, extent=(-32, 32, -32, 32), interpolation='none', origin='lower', vmin=vmin, vmax=vmax, cmap='plasma')
-    if colorbar:
-        plt.colorbar(im_obj)
+    im = np.histogram2d(x, y, bins=bins, range=limits)[0].T
+
+    if density:
+        im = im / len(x)
+
+    if ax is not None:
+        im_obj = ax.imshow(im, extent=(-32, 32, -32, 32), interpolation='none', origin='lower', vmin=vmin, vmax=vmax, cmap='plasma')
+        if colorbar:
+            plt.colorbar(im_obj)
+        ax.set_xlim(-32, 32)
+        ax.set_ylim(-32, 32)
     return im
 
 
