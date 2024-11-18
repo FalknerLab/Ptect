@@ -1,6 +1,6 @@
-import matplotlib.pyplot as plt
+from territorytools.urine import urine_across_time
+from territorytools.utils import xy_to_cm_vec, rotate_xy_vec
 import numpy as np
-from scrap.urine_old import urine_across_time
 from scipy.stats import zscore
 import warnings
 
@@ -8,16 +8,16 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def get_territory_data(sleap_pts, rot_offset=0, px_per_ft=350, ref_point=(638, 504), trunk_ind=5, head_ind=0):
-    slp_cm = xy_to_cm_vec(sleap_pts, center_pt=ref_point, px_per_ft=px_per_ft)
+def get_territory_data(sleap_pts, rot_offset=0, px_per_cm=350/30.48, ref_point=(638, 504), hz=40, trunk_ind=5, head_ind=0):
+    slp_cm = xy_to_cm_vec(sleap_pts, center_pt=ref_point, px_per_cm=px_per_cm)
     slp_rot = rotate_xy_vec(slp_cm, rot_offset)
     head_angles = get_head_direction(slp_rot, trunk_ind=trunk_ind, head_ind=head_ind)
     mouse_cent = np.nanmean(slp_rot, axis=1).T
     cent_x = mouse_cent[:, 0]
     cent_y = mouse_cent[:, 1]
     rel_xy = mouse_cent
-    dist_vec = np.linalg.norm(rel_xy[1:, :] - rel_xy[:-1, :], axis=1) / (px_per_ft/30.48)
-    dist_vec = np.hstack(([0], dist_vec))
+    dist_vec = np.linalg.norm(rel_xy[1:, :] - rel_xy[:-1, :], axis=1) / px_per_cm
+    dist_vec = np.hstack(([0], dist_vec)) * hz
     return cent_x, cent_y, head_angles, dist_vec, slp_rot
 
 
@@ -31,51 +31,6 @@ def get_diadic_behavior(sub_x, sub_y, sub_heading, stim_x, stim_y):
     return dist_btw_mice, sub_rel_ang_stim
 
 
-def rotate_xy_vec(pts, rot_ang):
-    out_pts = []
-    for i in range(pts.shape[-1]):
-        rot_pts = rotate_xy(pts[0, :, i], pts[1, :, i], rot_ang)
-        out_pts.append(np.vstack(rot_pts))
-    xys_rot = np.array(out_pts)
-    return np.moveaxis(xys_rot, 0, 2)
-
-
-def rotate_xy(x, y, rot):
-    rot_dict = {'rni': 0,
-                'none': 0,
-                'irn': 120,
-                'nir': 240}
-    if type(rot) == str:
-        rot_deg = rot_dict[rot]
-    else:
-        rot_deg = rot
-    in_rad = np.radians(rot_deg)
-    c, s = np.cos(in_rad), np.sin(in_rad)
-    rot_mat = [[c, -s], [s, c]]
-    xy = rot_mat @ np.vstack((x, y))
-    return xy[0, :], xy[1, :]
-
-
-def xy_to_cm(xy, center_pt=(325, 210), px_per_ft=225):
-    rad_cm = 30.48  # radius of arena in cm (12in)
-    px_per_cm = px_per_ft/rad_cm
-    rel_xy = xy - center_pt
-    rel_xy[:, 1] = -rel_xy[:, 1]
-    cm_x = rel_xy[:, 0] / px_per_cm
-    cm_y = rel_xy[:, 1] / px_per_cm
-    return cm_x, cm_y
-
-
-def xy_to_cm_vec(xys, center_pt=(325, 210), px_per_ft=225):
-    xys_rot = []
-    for i in range(xys.shape[-1]):
-        this_xy = xys[:, :, i].T
-        cm_x, cm_y = xy_to_cm(this_xy, center_pt=center_pt, px_per_ft=px_per_ft)
-        xys_rot.append(np.vstack((cm_x, cm_y)))
-    xys_rot = np.array(xys_rot)
-    return np.moveaxis(xys_rot, 0, 2)
-
-
 def get_head_direction(mouse_data, in_deg=False, trunk_ind=5, head_ind=0): #originally 4, 1
     md_copy = np.copy(mouse_data)
     md_copy[1, :, :] = -md_copy[1, :, :]
@@ -87,10 +42,7 @@ def get_head_direction(mouse_data, in_deg=False, trunk_ind=5, head_ind=0): #orig
 
 
 def compute_preferences(x, y, walls=None):
-    # ter_id = np.zeros_like(x)
-    # for i, (x0, y0) in enumerate(zip(x, y)):
-    #     ter_id[i] = xy_to_territory(x0, y0, walls=walls)
-    ter_id = xy_to_territory(x, y)
+    ter_id = xy_to_territory(x, y, walls=walls)
     ter, ter_cnts = np.unique(ter_id, return_counts=True)
     prefs = np.zeros(3)
     prefs[ter.astype(int)] = ter_cnts / sum(ter_cnts)
@@ -123,7 +75,6 @@ def xy_to_territory(x, y, walls=None):
     ter_a = np.logical_or(t < walls[0], t > walls[1])
     ter_b = np.logical_and(t > walls[0], t < walls[2])
     ter_c = np.logical_and(t > walls[2], t < walls[1])
-    # ter_id = np.argmax([ter_a, ter_b, ter_c])
     ter_id = np.argmax(np.vstack([ter_a, ter_b, ter_c]), axis=0)
     return ter_id
 
@@ -140,7 +91,7 @@ def interp_behavs(*args):
 
 
 def avg_angs(head_angs):
-    #Get average angle of head direction data
+    #Get average angle of head direction dataset
     avg_s = np.nanmean(np.sin(head_angs))
     avg_c = np.nanmean(np.cos(head_angs))
     return np.arctan2(avg_s, avg_c)
