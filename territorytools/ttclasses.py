@@ -1,4 +1,7 @@
 import territorytools.behavior as tdt
+import json
+import os
+import yaml
 
 
 def make_dict(info_string, delimiter):
@@ -37,7 +40,7 @@ class BasicRun:
     Attributes
     ----------
     data : dict
-        data recorded in this run. keys and values are arbitrary and depend on the experiment
+        dataset recorded in this run. keys and values are arbitrary and depend on the experiment
     info_dict : dict
         metadata associated with the run. used by BasicExp to filter and group recordings based on given keys/values
 
@@ -139,3 +142,158 @@ class BasicExp:
     def get_run_data(self):
         run_data = [r.data for r in self.runs]
         return run_data
+
+
+class MDcontroller:
+    def __init__(self, *args):
+        if len(args) > 0:
+            self.file_name = args[0]
+        self.metadata = load_metadata(self.file_name)
+
+    def add_metadata(self, key: str, value: str or dict):
+        """
+        Add key/value pair to Controllers metadata in place, OVERWRITES EXISTING KEYS
+
+        Parameters
+        ----------
+        key: key to add to metadata
+        value: value for that key
+
+        """
+        self.metadata[key] = value
+
+    def remove_metadata(self, key: str):
+        """
+        Remove given key from this Controller's metadata in place
+
+        Parameters
+        ----------
+        key: key to be removed
+
+        """
+        self.metadata.pop(key)
+
+    def has_kv(self, key: str, value: str):
+        return has_key_value_recur(self.metadata, key, value)
+
+    def __str__(self):
+        return dict_to_yaml(self.metadata)
+
+    def save_metadata(self, save_path):
+        yaml_file = open(save_path, 'w')
+        yaml.safe_dump(self.metadata, yaml_file)
+
+
+def dict_to_yaml(md_dict: dict, indent=0):
+    out_str = ''
+    for k in md_dict.keys():
+        for i in range(indent):
+            out_str += '\t'
+        out_str += k
+        if type(md_dict[k]) == dict:
+            out_str += '\n'
+            out_str += dict_to_yaml(md_dict[k], indent=indent + 1)
+        else:
+            out_str += ': ' + str(md_dict[k]) + '\n'
+    no_quote = out_str.replace('\'', '')
+    return no_quote
+
+
+def has_key_value_recur(test_dict: dict, key: str, value: str):
+    """
+    Recursively check if given key/value pair exists in a test dictionary
+
+    Parameters
+    ----------
+    test_dict: dict to recursively search through
+    key: key to query
+    value: value to query for the given key
+
+    Returns
+    -------
+    has_kv: boolean whether the given key value was found
+    """
+    has_kv = False
+    for k in test_dict.keys():
+        if has_kv:
+            return has_kv
+        if type(test_dict[k]) == dict:
+            has_kv = has_key_value_recur(test_dict[k], key, value)
+        elif test_dict[k] == value:
+            has_kv = True
+    return has_kv
+
+
+def load_metadata(metadata_file: str):
+    """
+    Wrapper for loading metadata via json and yaml libraries
+
+    Parameters
+    ----------
+    metadata_file: path to metadata file (must be .yaml or .json)
+
+    Returns
+    -------
+    metadata_dict: dictionary containing metadata as key/value pairs
+
+    """
+
+    file_ext = metadata_file.split('.')[-1]
+    file_handle = open(metadata_file, 'r')
+    metadata_dict = dict()
+    if file_ext == 'json':
+        metadata_dict = json.load(file_handle)
+    elif file_ext == 'yaml' or file_ext == 'yml':
+        metadata_dict = yaml.safe_load(file_handle)
+    else:
+        raise Exception("Metadata file must be either .json or .yaml")
+    return metadata_dict
+
+
+def yaml_to_json(yaml_file: str):
+    """
+    Converts yaml files to json files
+
+    Parameters
+    ----------
+    yaml_file: path to yaml file which will be converted
+
+    Returns
+    -------
+    json_file: path to newly created json file
+
+    """
+    metadata_dict = load_metadata(yaml_file)
+    yaml_pref = yaml_file.split('.')[:-1]
+    json_path = yaml_pref + '.json'
+    new_json = open(json_path, 'w')
+    json.dump(metadata_dict, new_json)
+    return json_path
+
+
+def sniff_metadata(root_dir, target_key, target_value):
+    """
+    Returns paths to all locations of metadata files which contain the given target metadata
+
+    Parameters
+    ----------
+    root_dir: root folder to recursively search through
+    target_key: metadata key to look for
+    target_value: metadata value to look for
+
+    Returns
+    -------
+    path_list: list of all paths to metadata files which contain the requested metadata
+    """
+    path_list = []
+    for f in os.listdir(root_dir):
+        this_path = root_dir + '/' + f
+        if os.path.isdir(this_path):
+            path_list += sniff_metadata(this_path, target_key, target_value)
+        else:
+            file_ext = f.split('.')[-1]
+            if file_ext == 'yaml' or file_ext == 'yml':
+                mdc = MDcontroller(this_path)
+                if mdc.has_kv(target_key, target_value):
+                    path_list.append(this_path)
+    return path_list
