@@ -27,7 +27,7 @@ share/python-wheels/
 MANIFEST
 
 # Data files
-data/
+dataset/
 
 # Local scrap files
 scrap/
