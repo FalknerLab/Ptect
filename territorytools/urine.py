@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
-from territorytools.behavior import xy_to_cm
+from territorytools.utils import xy_to_cm
 
 
 def sleap_to_fill_pts(sleap_h5):
@@ -21,12 +21,13 @@ def sleap_to_fill_pts(sleap_h5):
             if np.any(keep):
                 k_pts = t_pts[:, keep].T
                 last_pts[m] = k_pts
-        fill_pts.append(np.vstack(last_pts))
+        not_none = np.vectorize(type)(last_pts) != type(None)
+        fill_pts.append(np.vstack(last_pts[not_none]))
     return fill_pts
 
 
 def expand_urine_data(urine_xys, times=None):
-    num_urine_pnts_per_t = np.vectorize(len)(urine_xys)
+    num_urine_pnts_per_t = [len(xys) for xys in urine_xys]
     expanded_data = np.vstack(urine_xys)
     if times is not None:
         time_vec = np.zeros(expanded_data.shape[0])
@@ -40,7 +41,7 @@ def expand_urine_data(urine_xys, times=None):
 
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378,
-                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, v_mask=None):
+                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=30, v_mask=None):
         self.thermal_vid = avi_file
         vid_obj = cv2.VideoCapture(avi_file)
         width = int(vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -57,6 +58,7 @@ class Peetector:
         self.cool_thresh = cold_thresh
         self.smooth_kern = s_kern
         self.dilate_kern = di_kern
+        self.hz = hz
         if v_mask is None:
             self.valid_zone = cv2.circle(np.zeros((height, width)), (self.arena_cnt[0], self.arena_cnt[1]),
                                     int(px_per_cm*30.48), 255, -1)
@@ -64,8 +66,7 @@ class Peetector:
         else:
             self.valid_zone = v_mask
 
-    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False,
-                       hz=40, cool_thresh=None, hot_thresh=None):
+    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, cool_thresh=None, hot_thresh=None, return_frame=False, frame_type=0, verbose=False):
 
         if hot_thresh is None:
             hot_thresh = self.heat_thresh
@@ -93,9 +94,11 @@ class Peetector:
         urine_evts_times = []
         urine_evts_xys = []
         cool_evts_xys = np.empty((0, 2))
-        print('Running Peetect...')
+        if verbose:
+            print('Running Peetect...')
+        out_frame = []
         for f in range(0, num_frames):
-            if f % 100 == 0:
+            if f % 1000 == 0 and verbose:
                 print('Running Peetect on frame: ', f, ' of ', num_frames)
 
             # run detection on next frame
@@ -105,20 +108,20 @@ class Peetector:
                 this_evts, cool_evts, mask = self.peetect(frame_i, fill_pnts[f], cool_thresh=cool_thresh, hot_thresh=hot_thresh)
 
                 # if good urine detected, convert to cm and add to output
-                if len(this_evts) > 0:
-                    urine_evts_times.append(f / hz)
-                    urine_evts_xys.append(this_evts)
+                if len(cool_evts) > 0:
+                    urine_evts_times.append(f / self.hz)
+                    urine_evts_xys.append(cool_evts)
+                    # urine_evts_times.append(f / self.hz)
+                    # urine_evts_xys.append(this_evts)
 
                 if len(cool_evts) > 0:
                     cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
                     cool_evts_xys = np.unique(cool_evts_xys, axis=0)
 
-                out_frame = []
-                if show_vid or save_vid is not None:
-                    if show_vid == 2:
-                        out_frame = self.show_all_steps(mask, fill_pnts[f])
-                    else:
-                        out_frame = self.show_output(frame_i, this_evts, fill_pnts[f], cool_evts)
+                if frame_type == 2:
+                    out_frame = self.show_all_steps(mask, fill_pnts[f])
+                else:
+                    out_frame = self.show_output(frame_i, this_evts, fill_pnts[f], cool_evts)
 
                 if save_vid is not None:
                     out_vid.write(out_frame)
@@ -129,37 +132,36 @@ class Peetector:
 
         if save_vid is not None:
             out_vid.release()
-            print('Peetect video saved')
+            if verbose:
+                print('Peetect video saved')
         cv2.destroyAllWindows()
 
-        true_evts = []
-        true_ts = []
-        cool_evts_1d = list([''.join(str(row)) for row in cool_evts_xys.astype(int)])
-        for i, (t, t_e) in enumerate(zip(urine_evts_times, urine_evts_xys)):
-            print(fr'Post-fix event {i} of {len(urine_evts_times)}')
-            te_1d = list([''.join(str(row)) for row in t_e])
-            valid_urine, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
-            if len(valid_urine) > 0:
-                true_evts.append(t_e[te_inds, :])
-                true_ts.append(t)
-
+        # true_evts = []
+        # true_ts = []
+        # cool_evts_1d = list([''.join(str(row)) for row in cool_evts_xys.astype(int)])
         # for i, (t, t_e) in enumerate(zip(urine_evts_times, urine_evts_xys)):
         #     print(fr'Post-fix event {i} of {len(urine_evts_times)}')
-        #     this_te = []
-        #     for e in t_e:
-        #         if list(e) in cool_evts_xys.tolist():
-        #             this_te.append(e)
-        #     if len(this_te) > 0:
-        #         true_evts.append(np.array(this_te))
+        #     te_1d = list([''.join(str(row)) for row in t_e])
+        #     valid_urine, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
+        #     if len(valid_urine) > 0:
+        #         true_evts.append(t_e[te_inds, :])
         #         true_ts.append(t)
+
+        true_evts = urine_evts_xys
+        true_ts = urine_evts_times
 
         urine_data = np.array([])
         if len(true_evts) > 0:
             true_evts_cm = self.urine_px_to_cm(true_evts)
             urine_data = expand_urine_data(true_evts_cm, times=true_ts)
-        print('Peetect Finished')
 
-        return urine_data
+        if verbose:
+            print('Peetect Finished')
+
+        if return_frame:
+            return urine_data, out_frame
+        else:
+            return urine_data
 
     def urine_px_to_cm(self, pts_list):
         pts_cm = []
@@ -176,7 +178,7 @@ class Peetector:
         return pts_cm
 
     def peetect(self, frame, pts, hot_thresh=70, cool_thresh=30):
-        # get frame data, convert to grey
+        # get frame dataset, convert to grey
         im_w = np.shape(frame)[1]
         im_h = np.shape(frame)[0]
         f1 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -219,7 +221,7 @@ class Peetector:
         if np.sum(cool_mask) > 0:
             cool_xys = np.argwhere(cool_mask > 0)
 
-        return urine_xys, cool_xys, [f1, frame_smooth, dz_frame, test, di_frame, fill_frame]
+        return urine_xys, cool_xys, [f1, frame_smooth, dz_frame, test, di_frame, fill_frame, cool_mask]
 
     def fill_deadzones(self, frame, fill=None):
         c = (0, 0, 0)
@@ -283,11 +285,12 @@ class Peetector:
             self.dead_zones.append(pnts)
 
     def show_all_steps(self, mask_list, pnts):
-        concat_masks = np.zeros(640, 480)
+        concat_masks = np.zeros((640, 480))
         if len(mask_list) > 0:
             top_half = cv2.cvtColor(np.hstack(mask_list[:3]), cv2.COLOR_GRAY2BGR)
-            left_half = cv2.cvtColor(np.hstack(mask_list[3:-1]), cv2.COLOR_GRAY2BGR)
-            fframe = cv2.cvtColor(mask_list[-1], cv2.COLOR_GRAY2BGR)
+            left_half = cv2.cvtColor(np.hstack(mask_list[3:-2]), cv2.COLOR_GRAY2BGR)
+            fframe = cv2.cvtColor(mask_list[0], cv2.COLOR_GRAY2BGR)
+            fframe[mask_list[-1] == 1] = [255, 255, 0]
             for s in pnts:
                 slp_pnt = s.astype(int)
                 cv2.circle(fframe, (slp_pnt[0], slp_pnt[1]), 3, (0, 100, 200), -1, cv2.LINE_AA)
@@ -301,13 +304,8 @@ class Peetector:
         cols = ((0, 1), (1, 2))
         for pnts, c in zip((urine_pnts, cool_pnts), cols):
             if len(pnts) > 0:
-                urine_mask = np.zeros_like(raw_frame)
-                raw_frame[pnts[:, 0], pnts[:, 1], c[0]] = 0
-                raw_frame[pnts[:, 0], pnts[:, 1], c[1]] = 0
-                # urine_mask[urine_mask == 0] = np.nan
-                # contours, heir = cv2.findContours(urine_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                # cv2.drawContours(raw_frame, contours, -1, c, 1)
-                # cv2.addWeighted(raw_frame, 1, urine_mask, 0.5)
+                raw_frame[pnts[:, 0], pnts[:, 1], c[0]] = 255
+                raw_frame[pnts[:, 0], pnts[:, 1], c[1]] = 255
 
         for s in sleap_pnts:
             slp_pnt = s.astype(int)
@@ -341,7 +339,7 @@ class Peetector:
                 print(f'Frame {i} of {num_frames}')
             is_read, frame = vid_obj.read()
             if is_read:
-                # get frame data, convert to grey
+                # get frame dataset, convert to grey
                 f1 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 # smooth frame
@@ -374,17 +372,9 @@ class Peetector:
         p_data_1d = list([''.join(str(row)) for row in out_xys])
         valid_urine, _, p_data_inds = np.intersect1d(base_m_1d, p_data_1d, return_indices=True)
         out_xys = np.delete(out_xys, p_data_inds, 0)
-        base_mask = xy_to_cm(np.fliplr(base_mask), center_pt=self.arena_cnt, px_per_ft=self.px_per_cm*30.48)
-        out_xys = xy_to_cm(np.fliplr(out_xys), center_pt=self.arena_cnt, px_per_ft=self.px_per_cm * 30.48)
+        base_mask = xy_to_cm(np.fliplr(base_mask), center_pt=self.arena_cnt, px_per_cm=self.px_per_cm)
+        out_xys = xy_to_cm(np.fliplr(out_xys), center_pt=self.arena_cnt, px_per_cm=self.px_per_cm)
         return np.array(out_xys).T, np.array(base_mask).T
-
-        # out_x, out_y = xy_to_cm(out_xys, center_pt=self.arena_cnt, px_per_ft=self.px_per_cm*30.48)
-        # base_x, base_y = xy_to_cm(base_mask)
-        # return np.vstack((out_x, out_y)).T, np.vstack((base_x, base_y)).T
-
-        # out_xys = self.urine_px_to_cm_2d(out_xys)
-        # base_xys = self.urine_px_to_cm_2d(base_mask)
-        # return out_xys, base_xys
 
 
 def proj_urine_across_time(urine_data, thresh=0):
