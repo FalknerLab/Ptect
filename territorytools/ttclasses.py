@@ -32,6 +32,25 @@ def make_dict(info_string, delimiter):
     return out_dict
 
 
+def get_key_val_recur(key_name: str, nest_dict):
+    key_split = key_name.split('/')
+    if len(key_split) > 1:
+        n_dict = nest_dict[key_split[0]]
+        out_val = get_key_val_recur(''.join(key_split[1:]), nest_dict=n_dict)
+    else:
+        out_val = nest_dict[key_split[0]]
+    return out_val
+
+
+def set_key_val_recur(key_name: str, value, nest_dict):
+    key_split = key_name.split('/')
+    if len(key_split) > 1:
+        n_dict = nest_dict[key_split[0]]
+        set_key_val_recur(''.join(key_split[1:]), value, nest_dict=n_dict)
+    elif key_name in nest_dict.keys():
+        nest_dict[key_name] = value
+
+
 class BasicRun:
     """
     A class to represent a basic recording for an experiment. Most applications will extend this class for a specific
@@ -58,14 +77,7 @@ class BasicRun:
     def get_key_val(self, key_name: str, nest_dict=None):
         if nest_dict is None:
             nest_dict = self.info
-        key_split = key_name.split('/')
-        out_val = None
-        if len(key_split) > 1:
-            n_dict = nest_dict[key_split[0]]
-            out_val = self.get_key_val(''.join(key_split[1:]), nest_dict=n_dict)
-        else:
-            out_val = nest_dict[key_split[0]]
-        return out_val
+        return get_key_val_recur(key_name, nest_dict)
 
     def add_key_val(self, key_name, key_val):
         self.info[key_name] = key_val
@@ -175,6 +187,12 @@ class MDcontroller:
 
     def has_kv(self, key: str, value: str):
         return has_key_value_recur(self.metadata, key, value)
+
+    def get_val(self, key):
+        return get_key_val_recur(key, self.metadata)
+
+    def set_key_val(self, key_name: str, value):
+        set_key_val_recur(key_name, value, self.metadata)
 
     def __str__(self):
         return dict_to_yaml(self.metadata)
