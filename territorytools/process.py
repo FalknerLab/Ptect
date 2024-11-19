@@ -169,7 +169,7 @@ def find_territory_files(root_dir: str):
 
 def valid_dir(root_dir: str):
     target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5']
-    contains_f = np.zeros_like(target_sufs).astype(bool)
+    contains_f = np.zeros(len(target_sufs)).astype(bool)
     for ind, t in enumerate(target_sufs):
         has_t = find_file_recur(root_dir, t)
         contains_f[ind] = has_t is not None
