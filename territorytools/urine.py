@@ -266,12 +266,12 @@ class Peetector:
         w3 = np.array([[350, 215], [545, 95], [530, 70], [337, 195]]) + [5, 5]
         c_post = np.array([[337, 165], [356, 178], [368, 198], [367, 223], [356, 242], [336, 253], [311, 250],
                            [292, 238], [282, 219], [282, 193], [292, 175], [314, 166]]) + [-2, 3]
+        self.dead_zones = []
         if zone == 'block0':
             [self.dead_zones.append(w) for w in [w1, w2, w3, c_post]]
         elif zone == 'block1':
             self.dead_zones.append(c_post)
         else:
-            pnts = []
             if zone is None:
                 vid_obj = cv2.VideoCapture(self.thermal_vid)
                 _, frame = vid_obj.read()
@@ -311,7 +311,8 @@ class Peetector:
             slp_pnt = s.astype(int)
             cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (0, 100, 200), -1, cv2.LINE_AA)
         for d in self.dead_zones:
-            cv2.polylines(raw_frame, [d], True, (0, 0, 250), 1, cv2.LINE_AA)
+            pts = np.array(d, dtype=np.int32)
+            cv2.polylines(raw_frame, [pts], True, (0, 0, 250), 1, cv2.LINE_AA)
 
         big_frame = cv2.resize(raw_frame, (1280, 960))
         font = ImageFont.truetype('arial.ttf', 48)
