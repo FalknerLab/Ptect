@@ -5,10 +5,17 @@ import numpy as np
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+from PyQt5 import QtWidgets
+
 from territorytools.process import import_all_data, valid_dir, find_territory_files
 from territorytools.urine import Peetector
 from territorytools.ttclasses import MDcontroller
+import matplotlib
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+import matplotlib.pyplot as plt
 
+
+matplotlib.use('QT5Agg')
 
 def get_data_dialog():
     dialog = QFileDialog()
@@ -28,7 +35,8 @@ class PtectController:
             self.optical_vid = cv2.VideoCapture(t_files['top.mp4'])
             self.metadata = MDcontroller(t_files['metadata.yaml'])
             therm_cent = self.metadata.get_val('Territory/thermal_center')
-            self.ptect = Peetector(t_files['thermal.avi'], t_files['thermal.h5'], cent_xy=therm_cent)
+            t_px_per_cm = self.metadata.get_val('Territory/thermal_px_per_cm')
+            self.ptect = Peetector(t_files['thermal.avi'], t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm)
 
     def set_frame(self, frame_num: int):
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
@@ -45,7 +53,7 @@ class PtectController:
         ret, frame = self.optical_vid.read()
         if ret:
             urine_data, u_frame = self.ptect.peetect_frames(start_frame=self.frame_num,
-                                                            num_frames=1, return_frame=True, frame_type=2)
+                                                            num_frames=1, return_frame=True)
             rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
             rs_urine = cv2.resize(u_frame, (resize_w // 2, resize_h))
             c_im = np.hstack((rs_raw, rs_urine))
@@ -62,6 +70,8 @@ class PtectController:
                 self.metadata.set_key_val('Territory/ptect_cool_thresh', value)
             case 'deadzone':
                 self.ptect.add_dz(num_pts=20)
+            case 'frame_type':
+                self.ptect.frame_type = value
 
     def get_info(self):
         return str(self.metadata)
@@ -133,6 +143,16 @@ class PtectGUI(QWidget):
         dz_but = QPushButton('Add Dead Zone')
         dz_but.clicked.connect(self.set_dz)
         self.layout.addWidget(dz_but, 1, 3, 1, 1)
+        set_frame = QCheckBox('Show Steps')
+        def set_frame_type():
+            if set_frame.isChecked():
+                self.control.set_param('frame_type', 2)
+            else:
+                self.control.set_param('frame_type', 0)
+        set_frame.clicked.connect(set_frame_type)
+        self.layout.addWidget(set_frame, 1, 2, 1, 1)
+        mplw = MplWidget()
+        self.layout.addWidget(mplw, 3, 0, 1, 1)
 
     def set_dz(self):
         self.control.set_param('deadzone', 'na')
@@ -182,6 +202,24 @@ class SlideInputer(QGroupBox):
 
     def get_value(self):
         return self.id, self.slide.value()
+
+
+class MplCanvas(FigureCanvasQTAgg):
+    def __init__(self):
+        self.fig = plt.Figure()
+        self.ax = self.fig.add_subplot(111)
+        FigureCanvasQTAgg.__init__(self, self.fig)
+        FigureCanvasQTAgg.setSizePolicy(self, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        FigureCanvasQTAgg.updateGeometry(self)
+
+# Matplotlib widget
+class MplWidget(QWidget):
+    def __init__(self, parent=None):
+        QWidget.__init__(self, parent)
+        self.canvas = MplCanvas()
+        self.vbl = QVBoxLayout()
+        self.vbl.addWidget(self.canvas)
+        self.setLayout(self.vbl)
 
 
 class PtectApp:

@@ -41,7 +41,7 @@ def expand_urine_data(urine_xys, times=None):
 
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378,
-                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=30, v_mask=None):
+                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=30, v_mask=None, frame_type=None):
         self.thermal_vid = avi_file
         vid_obj = cv2.VideoCapture(avi_file)
         width = int(vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -59,6 +59,7 @@ class Peetector:
         self.smooth_kern = s_kern
         self.dilate_kern = di_kern
         self.hz = hz
+        self.frame_type = frame_type
         if v_mask is None:
             self.valid_zone = cv2.circle(np.zeros((height, width)), (self.arena_cnt[0], self.arena_cnt[1]),
                                     int(px_per_cm*30.48), 255, -1)
@@ -66,7 +67,7 @@ class Peetector:
         else:
             self.valid_zone = v_mask
 
-    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, cool_thresh=None, hot_thresh=None, return_frame=False, frame_type=0, verbose=False):
+    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False):
 
         if hot_thresh is None:
             hot_thresh = self.heat_thresh
@@ -118,7 +119,7 @@ class Peetector:
                     cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
                     cool_evts_xys = np.unique(cool_evts_xys, axis=0)
 
-                if frame_type == 2:
+                if self.frame_type == 2:
                     out_frame = self.show_all_steps(mask, fill_pnts[f])
                 else:
                     out_frame = self.show_output(frame_i, this_evts, fill_pnts[f], cool_evts)
@@ -302,7 +303,7 @@ class Peetector:
 
         cv2.circle(raw_frame, (self.arena_cnt[0], self.arena_cnt[1]), 200, (255, 255, 255, 255), 1, cv2.LINE_AA)
         cols = ((0, 1), (1, 2))
-        for pnts, c in zip((urine_pnts, cool_pnts), cols):
+        for pnts, c in zip((cool_pnts, urine_pnts), cols):
             if len(pnts) > 0:
                 raw_frame[pnts[:, 0], pnts[:, 1], c[0]] = 255
                 raw_frame[pnts[:, 0], pnts[:, 1], c[1]] = 255
@@ -320,7 +321,8 @@ class Peetector:
         draw = ImageDraw.Draw(img_pil)
         draw.text((20, 10), 'Fill Points', font=font, fill=(0, 100, 200, 0))
         draw.text((20, 60), 'Dead Zones', font=font, fill=(0, 0, 250, 0))
-        draw.text((20, 110), 'Mark Detected', font=font, fill=(0, 200, 100, 0))
+        draw.text((20, 110), 'Cool Mark', font=font, fill=(255, 255, 0, 0))
+        draw.text((20, 160), 'Hot Mark', font=font, fill=(0, 255, 255, 0))
         img = np.array(img_pil)
         return img
 
