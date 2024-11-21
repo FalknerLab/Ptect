@@ -16,6 +16,8 @@ def add_territory_circle(ax, block=None, rad=30.48):
         ax.plot([0, rad*np.sin(np.radians(60))], [0, rad*np.cos(np.radians(60))], color=c, linestyle='--')
         ax.plot([0, rad * np.sin(np.radians(-60))], [0, rad * np.cos(np.radians(-60))], color=c,
                 linestyle='--')
+    ax.set_xlim(-rad*1.1, rad*1.1)
+    ax.set_ylim(-rad * 1.1, rad * 1.1)
 
 
 def plot_run(run_data, md, ax=None):
