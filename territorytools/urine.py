@@ -39,13 +39,27 @@ def expand_urine_data(urine_xys, times=None):
     return expanded_data
 
 
+def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
+    if shape == 'circle':
+        radius = args[0]
+        out_mask = cv2.circle(np.zeros((height, width)), (cent_x, cent_y), radius, 255, -1)
+    elif shape == 'rectangle':
+        rect_w, rect_h = args[:]
+        pt1 = (cent_x - (rect_w // 2), cent_y - (rect_h // 2))
+        pt2 = (cent_x + (rect_w // 2), cent_y + (rect_h // 2))
+        out_mask = cv2.rectangle(np.zeros((height, width)), pt1, pt2, 255, -1)
+    else:
+        out_mask = None
+    out_mask = out_mask.astype('uint8')
+    return out_mask
+
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378,
-                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=30, v_mask=None, frame_type=None):
+                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30):
         self.thermal_vid = avi_file
         vid_obj = cv2.VideoCapture(avi_file)
-        width = int(vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(vid_obj.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.width = int(vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(vid_obj.get(cv2.CAP_PROP_FRAME_HEIGHT))
         if type(flood_pnts) == str:
             print('Converting slp file to fill points...')
             self.fill_pts = sleap_to_fill_pts(flood_pnts)
@@ -53,6 +67,7 @@ class Peetector:
             self.fill_pts = flood_pnts
         self.dead_zones = dead_zones
         self.arena_cnt = cent_xy
+        self.radius = radius
         self.px_per_cm = px_per_cm
         self.heat_thresh = hot_thresh
         self.cool_thresh = cold_thresh
@@ -61,11 +76,10 @@ class Peetector:
         self.hz = hz
         self.frame_type = frame_type
         if v_mask is None:
-            self.valid_zone = cv2.circle(np.zeros((height, width)), (self.arena_cnt[0], self.arena_cnt[1]),
-                                    int(px_per_cm*30.48), 255, -1)
-            self.valid_zone = self.valid_zone.astype('uint8')
+            self.set_valid_arena('circle', int(radius * px_per_cm))
         else:
             self.valid_zone = v_mask
+
 
     def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False):
 
@@ -109,11 +123,11 @@ class Peetector:
                 this_evts, cool_evts, mask = self.peetect(frame_i, fill_pnts[f], cool_thresh=cool_thresh, hot_thresh=hot_thresh)
 
                 # if good urine detected, convert to cm and add to output
-                if len(cool_evts) > 0:
-                    urine_evts_times.append(f / self.hz)
-                    urine_evts_xys.append(cool_evts)
+                if len(this_evts) > 0:
                     # urine_evts_times.append(f / self.hz)
-                    # urine_evts_xys.append(this_evts)
+                    # urine_evts_xys.append(cool_evts)
+                    urine_evts_times.append(f / self.hz)
+                    urine_evts_xys.append(this_evts)
 
                 if len(cool_evts) > 0:
                     cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
@@ -137,17 +151,6 @@ class Peetector:
                 print('Peetect video saved')
         cv2.destroyAllWindows()
 
-        # true_evts = []
-        # true_ts = []
-        # cool_evts_1d = list([''.join(str(row)) for row in cool_evts_xys.astype(int)])
-        # for i, (t, t_e) in enumerate(zip(urine_evts_times, urine_evts_xys)):
-        #     print(fr'Post-fix event {i} of {len(urine_evts_times)}')
-        #     te_1d = list([''.join(str(row)) for row in t_e])
-        #     valid_urine, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
-        #     if len(valid_urine) > 0:
-        #         true_evts.append(t_e[te_inds, :])
-        #         true_ts.append(t)
-
         true_evts = urine_evts_xys
         true_ts = urine_evts_times
 
@@ -159,24 +162,12 @@ class Peetector:
         if verbose:
             print('Peetect Finished')
 
+        out_data = (urine_data, cool_evts_xys)
+
         if return_frame:
-            return urine_data, out_frame
+            return out_data, out_frame
         else:
-            return urine_data
-
-    def urine_px_to_cm(self, pts_list):
-        pts_cm = []
-        for pts in pts_list:
-            x = (pts[:, 0] - self.arena_cnt[0]) / self.px_per_cm
-            y = -(pts[:, 1] - self.arena_cnt[1]) / self.px_per_cm
-            pts_cm.append(np.vstack((x, y)).T)
-        return pts_cm
-
-    def urine_px_to_cm_2d(self, pts):
-        x = (pts[:, 0] - self.arena_cnt[0]) / self.px_per_cm
-        y = -(pts[:, 1] - self.arena_cnt[1]) / self.px_per_cm
-        pts_cm = np.vstack((x, y)).T
-        return pts_cm
+            return out_data
 
     def peetect(self, frame, pts, hot_thresh=70, cool_thresh=30):
         # get frame dataset, convert to grey
@@ -223,6 +214,24 @@ class Peetector:
             cool_xys = np.argwhere(cool_mask > 0)
 
         return urine_xys, cool_xys, [f1, frame_smooth, dz_frame, test, di_frame, fill_frame, cool_mask]
+
+    def set_valid_arena(self, shape, *args):
+        self.valid_zone = make_shape_mask(self.width, self.height, shape,
+                                          self.arena_cnt[0], self.arena_cnt[1],*args)
+
+    def urine_px_to_cm(self, pts_list):
+        pts_cm = []
+        for pts in pts_list:
+            x = (pts[:, 1] - self.arena_cnt[0]) / self.px_per_cm
+            y = -(pts[:, 0] - self.arena_cnt[1]) / self.px_per_cm
+            pts_cm.append(np.vstack((x, y)).T)
+        return pts_cm
+
+    def urine_px_to_cm_2d(self, pts):
+        x = (pts[:, 0] - self.arena_cnt[0]) / self.px_per_cm
+        y = -(pts[:, 1] - self.arena_cnt[1]) / self.px_per_cm
+        pts_cm = np.vstack((x, y)).T
+        return pts_cm
 
     def fill_deadzones(self, frame, fill=None):
         c = (0, 0, 0)
@@ -301,7 +310,7 @@ class Peetector:
 
     def show_output(self, raw_frame, urine_pnts, sleap_pnts, cool_pnts):
 
-        cv2.circle(raw_frame, (self.arena_cnt[0], self.arena_cnt[1]), 200, (255, 255, 255, 255), 1, cv2.LINE_AA)
+        cv2.circle(raw_frame, (self.arena_cnt[0], self.arena_cnt[1]), int(self.px_per_cm*self.radius), (255, 255, 255, 255), 1, cv2.LINE_AA)
         cols = ((0, 1), (1, 2))
         for pnts, c in zip((cool_pnts, urine_pnts), cols):
             if len(pnts) > 0:
@@ -379,6 +388,17 @@ class Peetector:
         out_xys = xy_to_cm(np.fliplr(out_xys), center_pt=self.arena_cnt, px_per_cm=self.px_per_cm)
         return np.array(out_xys).T, np.array(base_mask).T
 
+    # def overlap_hot_cool(self):
+        # true_evts = []
+        # true_ts = []
+        # cool_evts_1d = list([''.join(str(row)) for row in cool_evts_xys.astype(int)])
+        # for i, (t, t_e) in enumerate(zip(urine_evts_times, urine_evts_xys)):
+        #     print(fr'Post-fix event {i} of {len(urine_evts_times)}')
+        #     te_1d = list([''.join(str(row)) for row in t_e])
+        #     valid_urine, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
+        #     if len(valid_urine) > 0:
+        #         true_evts.append(t_e[te_inds, :])
+        #         true_ts.append(t)
 
 def proj_urine_across_time(urine_data, thresh=0):
     all_xys = urine_data[:, 1:]
