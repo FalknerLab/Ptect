@@ -10,12 +10,14 @@ from PyQt5 import QtWidgets
 from territorytools.process import import_all_data, valid_dir, find_territory_files
 from territorytools.urine import Peetector
 from territorytools.ttclasses import MDcontroller
+from territorytools.plotting import add_territory_circle
 import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
 
 
 matplotlib.use('QT5Agg')
+plt.ion()
 
 def get_data_dialog():
     dialog = QFileDialog()
@@ -24,6 +26,7 @@ def get_data_dialog():
 
 
 class PtectController:
+    data_buf = []
     def __init__(self, data_folder: str = None):
         if data_folder is None:
             data_folder = get_data_dialog()
@@ -43,6 +46,14 @@ class PtectController:
             frame_num = 0
         self.frame_num = frame_num
 
+    def get_data(self):
+        times = None
+        hot_marks = None
+        if len(self.data_buf[0]) > 0:
+            times = self.data_buf[0][:, 0]
+            hot_marks = self.data_buf[0][:, 1:]
+        return times, hot_marks
+
     def read_next_frame(self, *args):
         resize_w, resize_h = 1280, 480
         if len(args) == 2:
@@ -57,6 +68,7 @@ class PtectController:
             rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
             rs_urine = cv2.resize(u_frame, (resize_w // 2, resize_h))
             c_im = np.hstack((rs_raw, rs_urine))
+            self.data_buf = urine_data
         self.set_frame(self.frame_num + 1)
         return c_im.astype('uint8')
 
@@ -83,7 +95,7 @@ class PtectGUI(QWidget):
 
     def __init__(self, *args, data_folder: str = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.resize(1280, 960)
+        self.resize(1280, 1400)
         self.setWindowTitle('Ptect Preview GUI')
         icon_path = os.path.abspath('../resources/ptect_icon.png')
         self.setWindowIcon(QIcon(icon_path))
@@ -102,7 +114,7 @@ class PtectGUI(QWidget):
                          QImage.Format_BGR888)
         self.prev_frame.setPixmap(QPixmap(prev_im))
         self.prev_frame.setScaledContents(True)
-        self.layout.addWidget(self.prev_frame, 0, 0, 2, 2)
+        self.layout.addWidget(self.prev_frame, 0, 0, 4, 3)
 
         self.add_controls()
 
@@ -117,32 +129,40 @@ class PtectGUI(QWidget):
 
     def add_controls(self):
         params = ['heat_thresh', 'cool_thresh']
-        for i, p in zip(range(2, 4), params):
+        num_slides = len(params)
+        end_slides = 3+num_slides
+        for i, p in zip(range(3, end_slides), params):
             slider = SlideInputer(p)
-            self.layout.addWidget(slider, 0, i, 1, 1)
+            self.layout.addWidget(slider, 3, i, 1, 1)
             self.thresh_controls.append(slider)
 
         play = QPushButton('Play')
         play.setCheckable(True)
-
         def play_video():
             if play.isChecked():
                 self.playing = True
             else:
                 self.playing = False
-
         play.clicked.connect(play_video)
-        self.layout.addWidget(play, 2, 0, 1, 1)
+        self.layout.addWidget(play, 5, 0, 1, 1)
+
+        load_but = QPushButton('Load Folder')
+        def load_data():
+            print('yo im loadin the data')
+        load_but.clicked.connect(load_data)
+        self.layout.addWidget(load_but, 5, 1, 1, 1)
+
         info_gb = QGroupBox('Run Info')
         info_box = QVBoxLayout()
         self.run_info = QLabel(self.control.get_info())
         info_box.addWidget(self.run_info)
         info_gb.setLayout(info_box)
-        self.layout.addWidget(info_gb, 0, 5, 1, 1)
+        self.layout.addWidget(info_gb, 3, end_slides+1, 1, 1)
 
         dz_but = QPushButton('Add Dead Zone')
         dz_but.clicked.connect(self.set_dz)
-        self.layout.addWidget(dz_but, 1, 3, 1, 1)
+        self.layout.addWidget(dz_but, 2, 4, 1, 1)
+
         set_frame = QCheckBox('Show Steps')
         def set_frame_type():
             if set_frame.isChecked():
@@ -150,9 +170,18 @@ class PtectGUI(QWidget):
             else:
                 self.control.set_param('frame_type', 0)
         set_frame.clicked.connect(set_frame_type)
-        self.layout.addWidget(set_frame, 1, 2, 1, 1)
-        mplw = MplWidget()
-        self.layout.addWidget(mplw, 3, 0, 1, 1)
+        self.layout.addWidget(set_frame, 2, 3, 1, 1)
+
+        self.plotter = PlotWidget()
+        add_territory_circle(self.plotter.gca())
+        self.layout.addWidget(self.plotter, 4, 0, 1, 1)
+
+        plotter = PlotWidget()
+        add_territory_circle(plotter.gca())
+        self.layout.addWidget(plotter, 4, 1, 1, 1)
+
+        arena_controls = ArenaSelector('Arena Controls')
+        self.layout.addWidget(arena_controls, 0, 3, 2, num_slides+3)
 
     def set_dz(self):
         self.control.set_param('deadzone', 'na')
@@ -164,7 +193,11 @@ class PtectGUI(QWidget):
 
         self.run_info.setText(self.control.get_info())
 
+
         if self.playing:
+            times, hot_marks = self.control.get_data()
+            if times is not None:
+                self.plotter.plot(hot_marks[:, 0], hot_marks[:, 1], plot_style='scatter', c=times)
             frame = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
             w = frame.shape[1]
             h = frame.shape[0]
@@ -203,6 +236,54 @@ class SlideInputer(QGroupBox):
     def get_value(self):
         return self.id, self.slide.value()
 
+class ArenaSelector(QGroupBox):
+    size = 0
+    sub_controls = []
+    def __init__(self, name, arena_type='circle'):
+        super().__init__(name)
+        self.arena_type = arena_type
+        self.layout = QGridLayout()
+        list_wid = QComboBox()
+        list_wid.addItems(['Circle', 'Rectangle', 'Custom'])
+        list_wid.currentTextChanged.connect(self.update_controls)
+        self.update_controls(self.arena_type)
+        self.layout.addWidget(list_wid, 0, 0, 1, 3)
+        self.setLayout(self.layout)
+
+
+    def update_controls(self, arena):
+        for sc in self.sub_controls:
+            sc.setParent(None)
+        self.sub_controls = []
+        match arena:
+            case 'Circle':
+                slide = QSlider(Qt.Orientation.Horizontal)
+                label = QLabel('Radius')
+                self.sub_controls.append(slide)
+                self.sub_controls.append(label)
+                self.layout.addWidget(slide, 1, 2, 1, 1)
+                self.layout.addWidget(label, 1, 1, 1, 1)
+            case 'Rectangle':
+                labs = ['Width', 'Height']
+                for i in range(2):
+                    slide = QSlider(Qt.Orientation.Horizontal)
+                    self.sub_controls.append(slide)
+                    self.layout.addWidget(slide, i+1, 2, 1, 1)
+                    label = QLabel(labs[i])
+                    self.sub_controls.append(label)
+                    self.layout.addWidget(label, i+1, 1, 1, 1)
+            case 'Custom':
+                draw_but = QPushButton('Draw Arena')
+                draw_but.clicked.connect(self.draw_arena)
+                self.sub_controls.append(draw_but)
+                self.layout.addWidget(draw_but)
+
+    def draw_arena(self):
+        print('ima draw arena')
+
+
+    def get_value(self):
+        return self.arena_type, self.size
 
 class MplCanvas(FigureCanvasQTAgg):
     def __init__(self):
@@ -212,14 +293,30 @@ class MplCanvas(FigureCanvasQTAgg):
         FigureCanvasQTAgg.setSizePolicy(self, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         FigureCanvasQTAgg.updateGeometry(self)
 
-# Matplotlib widget
-class MplWidget(QWidget):
+class PlotWidget(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
         self.canvas = MplCanvas()
+        pyqt_grey = (240/255, 240/255, 240/255)
+        self.canvas.fig.set_facecolor(pyqt_grey)
+        self.canvas.ax.set_facecolor(pyqt_grey)
+        self.canvas.ax.spines['top'].set_visible(False)
+        self.canvas.ax.spines['right'].set_visible(False)
         self.vbl = QVBoxLayout()
         self.vbl.addWidget(self.canvas)
         self.setLayout(self.vbl)
+
+    def gca(self):
+        return self.canvas.ax
+
+    def plot(self, *args, plot_style=None, **kwargs):
+        my_ax = self.gca()
+        if plot_style is not None:
+            if plot_style == 'scatter':
+                my_ax.scatter(args[0], args[1], **kwargs)
+        else:
+            my_ax.plot(*args, **kwargs)
+        self.canvas.draw()
 
 
 class PtectApp:
