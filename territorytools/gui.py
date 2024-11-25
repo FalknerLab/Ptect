@@ -6,6 +6,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
+from numpy.ma.core import minimum
 
 from territorytools.process import import_all_data, valid_dir, find_territory_files
 from territorytools.urine import Peetector
@@ -39,7 +40,9 @@ class PtectController:
             self.metadata = MDcontroller(t_files['metadata.yaml'])
             therm_cent = self.metadata.get_val('Territory/thermal_center')
             t_px_per_cm = self.metadata.get_val('Territory/thermal_px_per_cm')
-            self.ptect = Peetector(t_files['thermal.avi'], t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm)
+            self.therm_vid = t_files['thermal.avi']
+            self.ptect = Peetector(self.therm_vid, t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm)
+            self.test_frame = self.ptect.read_frame(0)[1]
 
     def set_frame(self, frame_num: int):
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
@@ -62,15 +65,16 @@ class PtectController:
         c_im = np.empty((resize_h, resize_w, 3))
         self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, self.frame_num)
         ret, frame = self.optical_vid.read()
+        out_frame = None
         if ret:
-            urine_data, u_frame = self.ptect.peetect_frames(start_frame=self.frame_num,
+            urine_data, out_frame = self.ptect.peetect_frames(start_frame=self.frame_num,
                                                             num_frames=1, return_frame=True)
             rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
-            rs_urine = cv2.resize(u_frame, (resize_w // 2, resize_h))
+            rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
             c_im = np.hstack((rs_raw, rs_urine))
             self.data_buf = urine_data
         self.set_frame(self.frame_num + 1)
-        return c_im.astype('uint8')
+        return c_im.astype('uint8'), frame, out_frame
 
     def set_param(self, param, value):
         match param:
@@ -84,6 +88,13 @@ class PtectController:
                 self.ptect.add_dz(num_pts=20)
             case 'frame_type':
                 self.ptect.frame_type = value
+            case 'arena':
+                if value[0] == 'circle' or value[0] == 'rectangle':
+                    self.ptect.arena_cnt[0] = value[1][0]
+                    self.ptect.arena_cnt[1] = value[1][1]
+                    self.ptect.set_valid_arena(value[0], *value[1][2:])
+                else:
+                    self.ptect.set_valid_arena(value[0], *value[1])
 
     def get_info(self):
         return str(self.metadata)
@@ -103,16 +114,17 @@ class PtectGUI(QWidget):
         self.preview_frame_w = 1280
         self.preview_frame_h = 480
         self.control = PtectController(data_folder=data_folder)
-        first_frame = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
+        first_frames = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
+        self.prev_im = first_frames[2]
 
         self.layout = QGridLayout()
         self.prev_frame = QLabel()
-        prev_im = QImage(first_frame,
+        q_im = QImage(first_frames[0],
                          self.preview_frame_w,
                          self.preview_frame_h,
                          3 * self.preview_frame_w,
                          QImage.Format_BGR888)
-        self.prev_frame.setPixmap(QPixmap(prev_im))
+        self.prev_frame.setPixmap(QPixmap(q_im))
         self.prev_frame.setScaledContents(True)
         self.layout.addWidget(self.prev_frame, 0, 0, 4, 3)
 
@@ -180,8 +192,9 @@ class PtectGUI(QWidget):
         add_territory_circle(plotter.gca())
         self.layout.addWidget(plotter, 4, 1, 1, 1)
 
-        arena_controls = ArenaSelector('Arena Controls')
-        self.layout.addWidget(arena_controls, 0, 3, 2, num_slides+3)
+        self.arena_controls = ArenaSelector('Arena Controls')
+        self.arena_controls.set_frame(self.control.test_frame)
+        self.layout.addWidget(self.arena_controls, 0, 3, 2, num_slides+3)
 
     def set_dz(self):
         self.control.set_param('deadzone', 'na')
@@ -193,12 +206,16 @@ class PtectGUI(QWidget):
 
         self.run_info.setText(self.control.get_info())
 
+        arena_params = self.arena_controls.get_arena_data()
+        self.control.set_param('arena', arena_params)
 
         if self.playing:
-            times, hot_marks = self.control.get_data()
-            if times is not None:
-                self.plotter.plot(hot_marks[:, 0], hot_marks[:, 1], plot_style='scatter', c=times)
-            frame = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
+            # times, hot_marks = self.control.get_data()
+            # if times is not None:
+            #     self.plotter.plot(hot_marks[:, 0], hot_marks[:, 1], plot_style='scatter', c=times)
+            frames = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
+            frame = frames[0]
+            self.prev_im = frames[2]
             w = frame.shape[1]
             h = frame.shape[0]
             q_frame = QImage(frame, w, h, 3 * w, QImage.Format_BGR888)
@@ -239,12 +256,14 @@ class SlideInputer(QGroupBox):
 class ArenaSelector(QGroupBox):
     size = 0
     sub_controls = []
+    frame_buf = None
+    custom_pts = []
     def __init__(self, name, arena_type='circle'):
         super().__init__(name)
         self.arena_type = arena_type
         self.layout = QGridLayout()
         list_wid = QComboBox()
-        list_wid.addItems(['Circle', 'Rectangle', 'Custom'])
+        list_wid.addItems(['circle', 'rectangle', 'custom'])
         list_wid.currentTextChanged.connect(self.update_controls)
         self.update_controls(self.arena_type)
         self.layout.addWidget(list_wid, 0, 0, 1, 3)
@@ -255,35 +274,61 @@ class ArenaSelector(QGroupBox):
         for sc in self.sub_controls:
             sc.setParent(None)
         self.sub_controls = []
+        self.arena_type = arena
         match arena:
-            case 'Circle':
-                slide = QSlider(Qt.Orientation.Horizontal)
+            case 'circle':
+                x_slide = QSlider(Qt.Orientation.Horizontal, minimum=1, maximum=1000)
+                y_slide = QSlider(Qt.Orientation.Horizontal, minimum=1, maximum=1000)
+                slide = QSlider(Qt.Orientation.Horizontal, minimum=1, maximum=1000)
                 label = QLabel('Radius')
+                self.sub_controls.append(x_slide)
+                self.sub_controls.append(y_slide)
+                self.layout.addWidget(x_slide, 1, 0, 1, 1)
+                self.layout.addWidget(y_slide, 2, 0, 1, 1)
                 self.sub_controls.append(slide)
                 self.sub_controls.append(label)
                 self.layout.addWidget(slide, 1, 2, 1, 1)
                 self.layout.addWidget(label, 1, 1, 1, 1)
-            case 'Rectangle':
+            case 'rectangle':
+                x_slide = QSlider(Qt.Orientation.Horizontal, minimum=1, maximum=1000)
+                y_slide = QSlider(Qt.Orientation.Horizontal, minimum=1, maximum=1000)
+                self.sub_controls.append(x_slide)
+                self.sub_controls.append(y_slide)
+                self.layout.addWidget(x_slide, 1, 0, 1, 1)
+                self.layout.addWidget(y_slide, 2, 0, 1, 1)
                 labs = ['Width', 'Height']
                 for i in range(2):
-                    slide = QSlider(Qt.Orientation.Horizontal)
+                    slide = QSlider(Qt.Orientation.Horizontal, minimum=1, maximum=1000)
                     self.sub_controls.append(slide)
                     self.layout.addWidget(slide, i+1, 2, 1, 1)
                     label = QLabel(labs[i])
                     self.sub_controls.append(label)
                     self.layout.addWidget(label, i+1, 1, 1, 1)
-            case 'Custom':
+            case 'custom':
                 draw_but = QPushButton('Draw Arena')
                 draw_but.clicked.connect(self.draw_arena)
                 self.sub_controls.append(draw_but)
                 self.layout.addWidget(draw_but)
 
+    def get_arena_data(self):
+        outs_args = []
+        if self.arena_type != 'custom':
+            for sc in self.sub_controls:
+                if isinstance(sc, QSlider):
+                    outs_args.append(sc.value())
+        else:
+            outs_args = self.custom_pts
+        return self.arena_type, outs_args
+
+
     def draw_arena(self):
-        print('ima draw arena')
+        plt.figure()
+        plt.imshow(self.frame_buf)
+        pnts = plt.ginput(n=6, timeout=600)
+        self.custom_pts = pnts
 
-
-    def get_value(self):
-        return self.arena_type, self.size
+    def set_frame(self, frame):
+        self.frame_buf = frame
 
 class MplCanvas(FigureCanvasQTAgg):
     def __init__(self):
