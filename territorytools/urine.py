@@ -40,16 +40,20 @@ def expand_urine_data(urine_xys, times=None):
 
 
 def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
+    im = np.zeros((height, width))
     if shape == 'circle':
-        radius = args[0]
-        out_mask = cv2.circle(np.zeros((height, width)), (cent_x, cent_y), radius, 255, -1)
+        radius = int(args[0])
+        out_mask = cv2.circle(im, (cent_x, cent_y), radius, 255, -1)
     elif shape == 'rectangle':
         rect_w, rect_h = args[:]
         pt1 = (cent_x - (rect_w // 2), cent_y - (rect_h // 2))
         pt2 = (cent_x + (rect_w // 2), cent_y + (rect_h // 2))
-        out_mask = cv2.rectangle(np.zeros((height, width)), pt1, pt2, 255, -1)
+        out_mask = cv2.rectangle(im, pt1, pt2, 255, -1)
     else:
-        out_mask = None
+        pts = []
+        if len(args) > 0:
+            pts = [np.array(args).astype(np.int32)]
+        out_mask = cv2.fillPoly(im, pts, -1)
     out_mask = out_mask.astype('uint8')
     return out_mask
 
@@ -57,9 +61,9 @@ class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378,
                  hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30):
         self.thermal_vid = avi_file
-        vid_obj = cv2.VideoCapture(avi_file)
-        self.width = int(vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.height = int(vid_obj.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.vid_obj = cv2.VideoCapture(avi_file)
+        self.width = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_HEIGHT))
         if type(flood_pnts) == str:
             print('Converting slp file to fill points...')
             self.fill_pts = sleap_to_fill_pts(flood_pnts)
@@ -80,8 +84,14 @@ class Peetector:
         else:
             self.valid_zone = v_mask
 
+    def read_frame(self, frame_num):
+        self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame_i = self.vid_obj.read()
+        return ret, frame_i
 
-    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False):
+
+    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, time_thresh=1,
+                       cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False):
 
         if hot_thresh is None:
             hot_thresh = self.heat_thresh
@@ -94,15 +104,10 @@ class Peetector:
             fourcc = cv2.VideoWriter.fourcc(*'mp4v')
             out_vid = cv2.VideoWriter(save_vid, fourcc, 120, (1280, 960), isColor=True)
 
-        # setup video object
-        vid_obj = cv2.VideoCapture(self.thermal_vid)
-
         # if not specified, peetect whole video
         if num_frames is None:
-            num_frames = int(vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
+            num_frames = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # offset video and fill points to start frame
-        vid_obj.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         fill_pnts = self.fill_pts[start_frame:]
 
         # collect frame times with urine and urine xys
@@ -117,15 +122,13 @@ class Peetector:
                 print('Running Peetect on frame: ', f, ' of ', num_frames)
 
             # run detection on next frame
-            is_read, frame_i = vid_obj.read()
+            is_read, frame_i = self.read_frame(f+start_frame)
 
             if is_read:
                 this_evts, cool_evts, mask = self.peetect(frame_i, fill_pnts[f], cool_thresh=cool_thresh, hot_thresh=hot_thresh)
 
                 # if good urine detected, convert to cm and add to output
                 if len(this_evts) > 0:
-                    # urine_evts_times.append(f / self.hz)
-                    # urine_evts_xys.append(cool_evts)
                     urine_evts_times.append(f / self.hz)
                     urine_evts_xys.append(this_evts)
 
