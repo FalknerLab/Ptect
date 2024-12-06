@@ -165,7 +165,10 @@ def rotate_xy(x, y, rot):
     rot_dict = {'rni': 0,
                 'none': 0,
                 'irn': 120,
-                'nir': 240}
+                'nir': 240,
+                'RNI': 0,
+                'IRN': 120,
+                'NIR': 240}
     if type(rot) == str:
         rot_deg = rot_dict[rot]
     else:
