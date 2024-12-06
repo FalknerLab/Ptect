@@ -1,3 +1,5 @@
+from types import NoneType
+
 import cv2
 import h5py
 import numpy as np
@@ -58,7 +60,7 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
     return out_mask
 
 class Peetector:
-    def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378,
+    def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
                  hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30):
         self.thermal_vid = avi_file
         self.vid_obj = cv2.VideoCapture(avi_file)
@@ -75,6 +77,7 @@ class Peetector:
         self.px_per_cm = px_per_cm
         self.heat_thresh = hot_thresh
         self.cool_thresh = cold_thresh
+        self.time_thresh = check_frames
         self.smooth_kern = s_kern
         self.dilate_kern = di_kern
         self.hz = hz
@@ -90,7 +93,7 @@ class Peetector:
         return ret, frame_i
 
 
-    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, time_thresh=1,
+    def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, time_thresh=None,
                        cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False):
 
         if hot_thresh is None:
@@ -98,6 +101,9 @@ class Peetector:
 
         if cool_thresh is None:
             cool_thresh = self.cool_thresh
+
+        if time_thresh is None:
+            time_thresh = self.time_thresh
 
         out_vid = None
         if save_vid is not None:
@@ -117,6 +123,8 @@ class Peetector:
         if verbose:
             print('Running Peetect...')
         out_frame = []
+        pee_buf = PBuffer(time_thresh)
+        num_frames = max(time_thresh, num_frames)
         for f in range(0, num_frames):
             if f % 1000 == 0 and verbose:
                 print('Running Peetect on frame: ', f, ' of ', num_frames)
@@ -126,9 +134,10 @@ class Peetector:
 
             if is_read:
                 this_evts, cool_evts, mask = self.peetect(frame_i, fill_pnts[f], cool_thresh=cool_thresh, hot_thresh=hot_thresh)
-
+                pee_buf.push(this_evts)
+                good_events = pee_buf.check_ahead()
                 # if good urine detected, convert to cm and add to output
-                if len(this_evts) > 0:
+                if len(good_events) > 0:
                     urine_evts_times.append(f / self.hz)
                     urine_evts_xys.append(this_evts)
 
@@ -288,11 +297,13 @@ class Peetector:
             if zone is None:
                 vid_obj = cv2.VideoCapture(self.thermal_vid)
                 _, frame = vid_obj.read()
-                plt.figure()
+                f = plt.figure(label='Define Deadzone')
                 plt.imshow(frame)
                 if num_pts == 0:
                     num_pts = 10
-                pnts = plt.ginput(n=num_pts, timeout=600)
+                plt.title(f'Click {num_pts} times to define deadzone')
+                pnts = plt.ginput(n=num_pts, timeout=0)
+                plt.close(f)
             else:
                 pnts = zone
             self.dead_zones.append(pnts)
@@ -391,17 +402,51 @@ class Peetector:
         out_xys = xy_to_cm(np.fliplr(out_xys), center_pt=self.arena_cnt, px_per_cm=self.px_per_cm)
         return np.array(out_xys).T, np.array(base_mask).T
 
-    # def overlap_hot_cool(self):
-        # true_evts = []
-        # true_ts = []
-        # cool_evts_1d = list([''.join(str(row)) for row in cool_evts_xys.astype(int)])
-        # for i, (t, t_e) in enumerate(zip(urine_evts_times, urine_evts_xys)):
-        #     print(fr'Post-fix event {i} of {len(urine_evts_times)}')
-        #     te_1d = list([''.join(str(row)) for row in t_e])
-        #     valid_urine, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
-        #     if len(valid_urine) > 0:
-        #         true_evts.append(t_e[te_inds, :])
-        #         true_ts.append(t)
+
+class PBuffer:
+    def __init__(self, buffer_size):
+        buffer_size = max(buffer_size, 1)
+        self.size = buffer_size
+        self.buffer = np.empty(buffer_size, dtype=np.ndarray)
+        self.pos = 0
+
+    def push(self, data):
+        self.buffer[self.pos] = data
+        self.pos += 1
+        if self.pos >= self.size:
+            self.pos = 0
+
+    def no_empty(self):
+        any_none = np.vectorize(type)(self.buffer)
+        any_none = np.any(any_none == NoneType)
+        if any_none:
+            return False
+        lens = np.vectorize(np.size)(self.buffer)
+        no_empty = np.all(lens)
+        return no_empty
+
+    def check_ahead(self):
+        if self.size == 1:
+            return self.buffer[0]
+
+        true_events = []
+        if self.no_empty():
+            this_evts = self.buffer[self.pos]
+            win_evts = self.buffer.copy()
+
+            bool_acc = np.ones(np.shape(this_evts)[0])
+            for e in win_evts:
+                str_xys = np.char.add(this_evts.astype(str)[:, 0], this_evts.astype(str)[:, 1])
+                str_exys = np.char.add(e.astype(str)[:, 0], e.astype(str)[:, 1])
+                all_next = np.isin(str_xys, str_exys)
+                bool_acc = np.logical_and(bool_acc, all_next)
+            keep_inds = bool_acc
+            if np.any(keep_inds):
+                good_evts = this_evts[keep_inds]
+                good_evts = np.fliplr(good_evts)
+                true_events.append(good_evts)
+                true_events = good_evts
+        return true_events
 
 def proj_urine_across_time(urine_data, thresh=0):
     all_xys = urine_data[:, 1:]
@@ -472,3 +517,16 @@ def dist_to_urine(x, y, expand_urine, thresh=0):
         dist_acc.append(np.min(dists))
     return np.array(dist_acc)
 
+
+
+    # def overlap_hot_cool(self):
+        # true_evts = []
+        # true_ts = []
+        # cool_evts_1d = list([''.join(str(row)) for row in cool_evts_xys.astype(int)])
+        # for i, (t, t_e) in enumerate(zip(urine_evts_times, urine_evts_xys)):
+        #     print(fr'Post-fix event {i} of {len(urine_evts_times)}')
+        #     te_1d = list([''.join(str(row)) for row in t_e])
+        #     valid_urine, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
+        #     if len(valid_urine) > 0:
+        #         true_evts.append(t_e[te_inds, :])
+        #         true_ts.append(t)
