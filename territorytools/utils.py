@@ -77,48 +77,58 @@ def fix_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='
                     last_cent = this_cent[best_track, :]
                     out_t_occs[inds[i], 0] = t_occupancy[i, best_track]
                     out_ts[0, :, :, inds[i]] = tracks[best_track, :, :, i]
+        fixed_file['track_names'] = [out_name]
 
-    # else:
-    #     out_name = slp_data['track_names'][:2][:]
-    #     out_ts = np.nan * np.zeros_like(tracks[:2, :, :, :])
-    #     for i in range(len_t):
-    #         if i % 1000 == 0:
-    #             print('Cleaning slp file, on frame: ', i)
-    #         this_cent = np.nanmean(tracks[:, :, :, i], axis=2)
-    #         rel_y = this_cent[:, 0] - cent_xy[0]
-    #         rel_x = this_cent[:, 1] - cent_xy[1]
-    #         rot_x, rot_y = rotate_xy(rel_x, rel_y, rot_ang)
-    #         as_t = np.degrees(np.arctan2(rot_y, rot_x))
-    #         rot_t = as_t
-    #         in_res = rot_t < 0
-    #         in_int = rot_t > 0
-    #         if np.any(in_res):
-    #             res_ind = np.where(in_res)[0][0]
-    #             t_scores[0, i] = t_scores[res_ind, i]
-    #             p_scores[0, :, i] = p_scores[res_ind, :, i]
-    #             i_scores[0, i] = i_scores[res_ind, i]
-    #             t_occupancy[i, 0] = 1
-    #             out_ts[0, :, :, i] = tracks[res_ind, :, :, i]
-    #         else:
-    #             t_scores[0, i] = np.nan
-    #             p_scores[0, :, i] = np.ones_like(p_scores[0, :, i]) * np.nan
-    #             i_scores[0, i] = np.nan
-    #             t_occupancy[i, 0] = 0
-    #             out_ts[0, :, :, i] = np.ones_like(out_ts[0, :, :, 0]) * np.nan
-    #         if np.any(in_int):
-    #             int_ind = np.where(in_int)[0][0]
-    #             t_scores[1, i] = t_scores[int_ind, i]
-    #             p_scores[1, :, i] = p_scores[int_ind, :, i]
-    #             i_scores[1, i] = i_scores[int_ind, i]
-    #             t_occupancy[i, 1] = 1
-    #             out_ts[1, :, :, i] = tracks[int_ind, :, :, i]
-    #         else:
-    #             t_scores[1, i] = np.nan
-    #             p_scores[1, :, i] = np.ones_like(p_scores[1, :, i]) * np.nan
-    #             i_scores[1, i] = np.nan
-    #             t_occupancy[i, 1] = 0
-    #             out_ts[1, :, :, i] = np.ones_like(out_ts[1, :, :, 0]) * np.nan
-    fixed_file['track_names'] = [out_name]
+    else:
+        out_names = slp_data['track_names'][:2][:]
+        tracks = np.array(slp_data['tracks'])
+        t_scores = np.array(slp_data['tracking_scores'])
+        i_scores = np.array(slp_data['instance_scores'])
+        p_scores = np.array(slp_data['point_scores'])
+        t_occupancy = np.array(slp_data['track_occupancy'])
+        out_ts = np.nan * np.zeros_like(tracks[:2, :, :, :])
+        for i in range(len_t):
+            if i % 1000 == 0:
+                print('Cleaning slp file, on frame: ', i)
+            this_cent = np.nanmean(tracks[:, :, :, i], axis=2)
+            rel_y = this_cent[:, 0] - cent_xy[0]
+            rel_x = this_cent[:, 1] - cent_xy[1]
+            rot_x, rot_y = rotate_xy(rel_x, rel_y, rot_ang)
+            as_t = np.degrees(np.arctan2(rot_y, rot_x))
+            rot_t = as_t
+            in_res = rot_t < 0
+            in_int = rot_t > 0
+            if np.any(in_res):
+                res_ind = np.where(in_res)[0][0]
+                t_scores[0, i] = t_scores[res_ind, i]
+                p_scores[0, :, i] = p_scores[res_ind, :, i]
+                i_scores[0, i] = i_scores[res_ind, i]
+                t_occupancy[i, 0] = 1
+                out_ts[0, :, :, i] = tracks[res_ind, :, :, i]
+            else:
+                t_scores[0, i] = np.nan
+                p_scores[0, :, i] = np.ones_like(p_scores[0, :, i]) * np.nan
+                i_scores[0, i] = np.nan
+                t_occupancy[i, 0] = 0
+                out_ts[0, :, :, i] = np.ones_like(out_ts[0, :, :, 0]) * np.nan
+            if np.any(in_int):
+                int_ind = np.where(in_int)[0][0]
+                t_scores[1, i] = t_scores[int_ind, i]
+                p_scores[1, :, i] = p_scores[int_ind, :, i]
+                i_scores[1, i] = i_scores[int_ind, i]
+                t_occupancy[i, 1] = 1
+                out_ts[1, :, :, i] = tracks[int_ind, :, :, i]
+            else:
+                t_scores[1, i] = np.nan
+                p_scores[1, :, i] = np.ones_like(p_scores[1, :, i]) * np.nan
+                i_scores[1, i] = np.nan
+                t_occupancy[i, 1] = 0
+                out_ts[1, :, :, i] = np.ones_like(out_ts[1, :, :, 0]) * np.nan
+        out_t_scores = t_scores[:2, :]
+        out_i_scores = i_scores[:2, :]
+        out_p_scores = p_scores[:2, :, :]
+        out_t_occs = t_occupancy[:, :2]
+        fixed_file['track_names'] = out_names
     fixed_file['tracking_scores'] = out_t_scores
     fixed_file['instance_scores'] = out_i_scores
     fixed_file['point_scores'] = out_p_scores
@@ -179,19 +189,31 @@ def rotate_xy(x, y, rot):
     xy = rot_mat @ np.vstack((x, y))
     return xy[0, :], xy[1, :]
 
+def intersect2d(arr0, arr1, return_int=True):
+    cool_evts_1d = list([''.join(str(row)) for row in arr0])
+    te_1d = list([''.join(str(row)) for row in arr1])
+    valid_int, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
+    if return_int:
+        return arr0[ce_inds[0]]
+    else:
+        bool_arr = np.ones_like(arr1[:, 0]).astype(bool)
+        bool_arr[te_inds] = False
+        return arr1[bool_arr, :], bool_arr
+
 
 if __name__ == '__main__':
     # root_dir = 'D:/ptect_dataset/testing/kpms'
     # for f in os.listdir(root_dir):
     #     file_n = os.path.join(root_dir, f)
-    #     fix_sleap_h5(file_n)
+    fix_sleap_h5('D:\\ptect_dataset\\PPsync4_Resident_DAB014_Intruder_DAB019_Day_0_Orientation_IRN\\Block0\\ppsync4_resident_dab014_intruder_dab019_day_0_block_0_orientation_irn_20240916_143016_top.h5',
+                 block=0, orientation='irn', cent_xy=(707, 541))
 
-    root_dir = 'D:/ptect_dataset/kpms/grid_movies'
-    for f in os.listdir(root_dir):
-        f_path = os.path.join(root_dir, f)
-        f_split = f.split('.')
-        if f_split[-1] == 'mp4':
-            out_f = os.path.join(root_dir, ''.join(f_split[:-1]) + '.gif')
-            command = f'ffmpeg -i {f_path} {out_f}'
-            print(command)
-            os.system(command)
+    # root_dir = 'D:/ptect_dataset/kpms/grid_movies'
+    # for f in os.listdir(root_dir):
+    #     f_path = os.path.join(root_dir, f)
+    #     f_split = f.split('.')
+    #     if f_split[-1] == 'mp4':
+    #         out_f = os.path.join(root_dir, ''.join(f_split[:-1]) + '.gif')
+    #         command = f'ffmpeg -i {f_path} {out_f}'
+    #         print(command)
+    #         os.system(command)
