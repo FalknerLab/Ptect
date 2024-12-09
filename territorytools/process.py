@@ -157,7 +157,7 @@ def import_all_data(files_dict, md_dict, show_all=False, start_t_sec=0, skip_pte
 
 
 def find_territory_files(root_dir: str):
-    target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5', 'metadata.yaml', 'fixedtherm.h5', 'fixedtop.h5', 'ptdata.npy', 'output.npy']
+    target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5', 'ptmetadata.yml', 'fixedtherm.h5', 'fixedtop.h5', 'ptdata.npy', 'output.npy']
     out_paths = {s: None for s in target_sufs}
     out_paths['root'] = root_dir
     for t in target_sufs:
