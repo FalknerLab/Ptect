@@ -87,6 +87,10 @@ class Peetector:
         else:
             self.valid_zone = v_mask
 
+
+    def get_length(self):
+        return self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT)
+
     def read_frame(self, frame_num):
         self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
         ret, frame_i = self.vid_obj.read()
@@ -230,6 +234,8 @@ class Peetector:
     def set_valid_arena(self, shape, *args):
         self.valid_zone = make_shape_mask(self.width, self.height, shape,
                                           self.arena_cnt[0], self.arena_cnt[1],*args)
+        if shape == 'circle':
+            self.radius = args[0]
 
     def urine_px_to_cm(self, pts_list):
         pts_cm = []
@@ -317,14 +323,14 @@ class Peetector:
             fframe[mask_list[-1] == 1] = [255, 255, 0]
             for s in pnts:
                 slp_pnt = s.astype(int)
-                cv2.circle(fframe, (slp_pnt[0], slp_pnt[1]), 3, (0, 100, 200), -1, cv2.LINE_AA)
+                cv2.circle(fframe, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
             bot_half = np.hstack((left_half, fframe))
             concat_masks = np.vstack((top_half, bot_half))
         return concat_masks
 
     def show_output(self, raw_frame, urine_pnts, sleap_pnts, cool_pnts):
 
-        cv2.circle(raw_frame, (self.arena_cnt[0], self.arena_cnt[1]), int(self.px_per_cm*self.radius), (255, 255, 255, 255), 1, cv2.LINE_AA)
+        cv2.circle(raw_frame, (self.arena_cnt[0], self.arena_cnt[1]), self.radius, (255, 255, 255, 255), 1, cv2.LINE_AA)
         cols = ((0, 1), (1, 2))
         for pnts, c in zip((cool_pnts, urine_pnts), cols):
             if len(pnts) > 0:
@@ -333,7 +339,7 @@ class Peetector:
 
         for s in sleap_pnts:
             slp_pnt = s.astype(int)
-            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (0, 100, 200), -1, cv2.LINE_AA)
+            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
         for d in self.dead_zones:
             pts = np.array(d, dtype=np.int32)
             cv2.polylines(raw_frame, [pts], True, (0, 0, 250), 1, cv2.LINE_AA)
@@ -342,7 +348,7 @@ class Peetector:
         font = ImageFont.truetype('arial.ttf', 48)
         img_pil = Image.fromarray(big_frame)
         draw = ImageDraw.Draw(img_pil)
-        draw.text((20, 10), 'Fill Points', font=font, fill=(0, 100, 200, 0))
+        draw.text((20, 10), 'Fill Points', font=font, fill=(100, 100, 200, 0))
         draw.text((20, 60), 'Dead Zones', font=font, fill=(0, 0, 250, 0))
         draw.text((20, 110), 'Cool Mark', font=font, fill=(255, 255, 0, 0))
         draw.text((20, 160), 'Hot Mark', font=font, fill=(0, 255, 255, 0))
