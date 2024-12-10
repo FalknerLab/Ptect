@@ -11,7 +11,7 @@ def add_territory_circle(ax, block=None, rad=30.48):
     circ = Circle((0, 0), radius=rad, facecolor=(0.9, 0.9, 0.9), edgecolor=(0.2, 0.2, 0.2), linestyle='--')
     ax.add_patch(circ)
     if block == 'block0':
-        c = (1, 1, 1)
+        c = (0, 0, 0)
         ax.plot([0, 0], [0, -rad], color=c, linestyle='--')
         ax.plot([0, rad*np.sin(np.radians(60))], [0, rad*np.cos(np.radians(60))], color=c, linestyle='--')
         ax.plot([0, rad * np.sin(np.radians(-60))], [0, rad * np.cos(np.radians(-60))], color=c,
