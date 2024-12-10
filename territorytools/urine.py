@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
-from territorytools.utils import xy_to_cm
+from territorytools.utils import xy_to_cm, rotate_xy
 
 
 def sleap_to_fill_pts(sleap_h5):
@@ -61,7 +61,8 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
 
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
-                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30):
+                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30,
+                 rot_ang=0):
         self.thermal_vid = avi_file
         self.vid_obj = cv2.VideoCapture(avi_file)
         self.width = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -82,6 +83,7 @@ class Peetector:
         self.dilate_kern = di_kern
         self.hz = hz
         self.frame_type = frame_type
+        self.rot_ang = rot_ang
         if v_mask is None:
             self.set_valid_arena('circle', int(radius * px_per_cm))
         else:
@@ -98,7 +100,7 @@ class Peetector:
 
 
     def peetect_frames(self, start_frame=0, num_frames=None, save_vid=None, show_vid=False, time_thresh=None,
-                       cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False):
+                       cool_thresh=None, hot_thresh=None, return_frame=False, verbose=False, rot_ang=None):
 
         if hot_thresh is None:
             hot_thresh = self.heat_thresh
@@ -108,6 +110,9 @@ class Peetector:
 
         if time_thresh is None:
             time_thresh = self.time_thresh
+
+        if rot_ang is None:
+            rot_ang = self.rot_ang
 
         out_vid = None
         if save_vid is not None:
@@ -172,7 +177,8 @@ class Peetector:
 
         urine_data = np.array([])
         if len(true_evts) > 0:
-            true_evts_cm = self.urine_px_to_cm(true_evts)
+            true_evts_cm = self.urine_px_to_cm_rot(true_evts, rot_ang=rot_ang)
+
             urine_data = expand_urine_data(true_evts_cm, times=true_ts)
 
         if verbose:
@@ -237,11 +243,13 @@ class Peetector:
         if shape == 'circle':
             self.radius = args[0]
 
-    def urine_px_to_cm(self, pts_list):
+    def urine_px_to_cm_rot(self, pts_list, rot_ang=0):
         pts_cm = []
         for pts in pts_list:
             x = (pts[:, 1] - self.arena_cnt[0]) / self.px_per_cm
             y = -(pts[:, 0] - self.arena_cnt[1]) / self.px_per_cm
+            # xy = np.vstack((x, y)).T
+            x, y = rotate_xy(x, y, rot_ang)
             pts_cm.append(np.vstack((x, y)).T)
         return pts_cm
 
@@ -310,9 +318,14 @@ class Peetector:
                 plt.title(f'Click {num_pts} times to define deadzone')
                 pnts = plt.ginput(n=num_pts, timeout=0)
                 plt.close(f)
+                this_dz = []
+                for p in pnts:
+                    this_dz.append([int(p[0]), int(p[1])])
+                self.dead_zones.append(this_dz)
             else:
-                pnts = zone
-            self.dead_zones.append(pnts)
+                self.dead_zones = zone
+
+        return self.dead_zones
 
     def show_all_steps(self, mask_list, pnts):
         concat_masks = np.zeros((640, 480))
