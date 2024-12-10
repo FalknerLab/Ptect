@@ -51,13 +51,14 @@ class PtectController:
             self.op_hz = self.metadata.get_val('Territory/optical_hz')
             self.t_offset_frames = self.metadata.get_val('Territory/thermal_offset')
             self.therm_hz = self.metadata.get_val('Territory/thermal_hz')
+            orient = self.metadata.get_val('Territory/orientation')
             self.control_hz = max(self.op_hz, self.therm_hz)
             self.optical_vid = cv2.VideoCapture(t_files['top.mp4'])
             sleap_file = h5py.File(t_files['fixedtop.h5'], 'r')
             self.sleap_data = sleap_file['tracks']
             self.optical_data = []
             for i in self.sleap_data:
-                this_data = get_territory_data(i, rot_offset=self.metadata.get_val('Territory/orientation'),
+                this_data = get_territory_data(i, rot_offset=orient,
                                                px_per_cm=self.metadata.get_val('Territory/optical_px_per_cm'),
                                                ref_point=self.metadata.get_val('Territory/optical_center'),
                                                hz = self.metadata.get_val('Territory/optical_hz'))
@@ -65,8 +66,12 @@ class PtectController:
             therm_cent = self.metadata.get_val('Territory/thermal_center')
             t_px_per_cm = self.metadata.get_val('Territory/thermal_px_per_cm')
             self.therm_vid = t_files['thermal.avi']
-            self.ptect = Peetector(self.therm_vid, t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm)
+            self.ptect = Peetector(self.therm_vid, t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm,
+                                   rot_ang=orient)
             self.test_frame = self.ptect.read_frame(0)[1]
+            dz_data = self.metadata.get_val('Territory/deadzone')
+            if len(dz_data) > 0:
+                self.set_param('deadzone', dz_data)
 
     def set_frame(self, frame_num: int):
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
@@ -156,7 +161,11 @@ class PtectController:
                 self.ptect.time_thresh = value
                 self.metadata.set_key_val('Territory/ptect_time_thresh', value)
             case 'deadzone':
-                self.ptect.add_dz(num_pts=int(value))
+                if type(value) == list:
+                    self.ptect.add_dz(zone=value)
+                else:
+                    pts = self.ptect.add_dz(num_pts=int(value))
+                    self.metadata.set_key_val('Territory/deadzone', pts)
             case 'frame_type':
                 self.ptect.frame_type = value
             case 'arena':
@@ -179,6 +188,9 @@ class PtectController:
 
     def get_info(self):
         return str(self.metadata)
+
+    def save_info(self):
+        self.metadata.save_metadata(self.metadata.file_name)
 
 
 
@@ -254,8 +266,10 @@ class PtectGUI(QWidget):
 
         info_gb = QGroupBox('Run Info')
         info_box = QVBoxLayout()
+        scroller = QScrollArea()
         self.run_info = QLabel(self.control.get_info())
-        info_box.addWidget(self.run_info)
+        scroller.setWidget(self.run_info)
+        info_box.addWidget(scroller)
         info_gb.setLayout(info_box)
         self.layout.addWidget(info_gb, 2, end_slides+1, 1, 1)
 
@@ -267,6 +281,10 @@ class PtectGUI(QWidget):
         self.layout.addWidget(self.dz_pt_box, 1, 4, 1, 1)
         pt_lab = QLabel('# of Points')
         self.layout.addWidget(pt_lab, 1, 5, 1, 1)
+
+        save_info_but = QPushButton('Save Info')
+        save_info_but.clicked.connect(self.control.save_info)
+        self.layout.addWidget(save_info_but, 1, 6, 1, 1)
 
         set_frame = QCheckBox('Show Steps')
         def set_frame_type():
@@ -280,14 +298,14 @@ class PtectGUI(QWidget):
         self.mark_plotter = PlotWidget()
         mark_ax = self.mark_plotter.gca()
         mark_ax.set_title('Detected Marks')
-        add_territory_circle(mark_ax)
+        add_territory_circle(mark_ax, block='block0')
         self.mark_plotter.colorbar(0, self.control.get_data('therm_len'), label='Mark Time (frame)')
         self.layout.addWidget(self.mark_plotter, 3, 1, 2, 1)
 
         self.xy_plotter = PlotWidget()
         xy_ax = self.xy_plotter.gca()
         xy_ax.set_title('XY Position (cm)')
-        add_territory_circle(xy_ax)
+        add_territory_circle(xy_ax, block='block0')
         xy_ax.plot([0,0], [0,0], c=MOUSE_COLORS_MPL[0], label='Self')
         xy_ax.plot([0,0], [0,0], c=MOUSE_COLORS_MPL[1], label='Other')
         xy_ax.legend()
@@ -344,7 +362,7 @@ class PtectGUI(QWidget):
             self.raster_plotter.gca().set_xlim(self.control.frame_num-400, self.control.frame_num+400)
 
             self.xy_plotter.clear()
-            mice_xys = self.control.get_data('optical', time_win=40)
+            mice_xys = self.control.get_data('optical', time_win=12000)
 
             for ind, xy in enumerate(mice_xys):
                 self.xy_plotter.plot(xy[0], xy[1], c=MOUSE_COLORS_MPL[ind])
@@ -523,7 +541,7 @@ class MplCanvas(FigureCanvasQTAgg):
 class PlotWidget(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
-        self.cmap = 'cool'
+        self.cmap = 'summer'
         self.current_pobj = []
         self.canvas = MplCanvas()
         pyqt_grey = (240/255, 240/255, 240/255)
