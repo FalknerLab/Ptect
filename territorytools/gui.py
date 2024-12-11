@@ -176,7 +176,10 @@ class PtectController:
                     self.ptect.arena_cnt[1] = c_y
                     self.ptect.set_valid_arena(value[0], *value[1][2:])
                     self.metadata.set_key_val('Territory/thermal_center', [c_x, c_y])
-                    self.metadata.set_key_val('Territory/arena_data', value[1][2:])
+                    if value[0] == 'circle':
+                        self.metadata.set_key_val('Territory/arena_data', value[1][2])
+                    else:
+                        self.metadata.set_key_val('Territory/arena_data', value[1][2:])
                 else:
                     self.ptect.set_valid_arena(value[0], *value[1])
                     self.metadata.set_key_val('Territory/arena_data', value[1])
@@ -198,8 +201,9 @@ class PtectGUI(QWidget):
     playing = False
     thresh_controls = []
 
-    def __init__(self, *args, data_folder: str = None, **kwargs):
+    def __init__(self, *args, data_folder: str = None, parent=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.app = parent
         res = self.screen().size()
         self.resize(int(res.width()*0.8), int(res.height()*0.8))
         self.setWindowTitle('Ptect Preview GUI')
@@ -228,6 +232,7 @@ class PtectGUI(QWidget):
         self.layout.addWidget(self.prev_frame, 0, 0, 3, 2)
 
         self.add_controls()
+        self.set_controls()
 
         self.setLayout(self.layout)
         self.prev_frame.show()
@@ -260,7 +265,9 @@ class PtectGUI(QWidget):
 
         load_but = QPushButton('Load Folder')
         def load_data():
-            print('yo im loadin the data')
+            # self.app.reset()
+            self.control = PtectController()
+            self.set_controls()
         load_but.clicked.connect(load_data)
         self.layout.addWidget(load_but, 5, 1, 1, 1)
 
@@ -327,11 +334,13 @@ class PtectGUI(QWidget):
         rast_ax.set_title('Marking Raster')
         self.layout.addWidget(self.raster_plotter, 4, 2, 1, 6)
 
+        self.arena_controls = ArenaSelector('Arena Controls')
+        self.layout.addWidget(self.arena_controls, 0, 2, 1, num_slides+3)
+
+    def set_controls(self):
         arena_data = self.control.get_metadata('arena')
-        self.arena_controls = ArenaSelector('Arena Controls', arena_type=arena_data[1])
         self.arena_controls.set_values(arena_data)
         self.arena_controls.set_frame(self.control.test_frame)
-        self.layout.addWidget(self.arena_controls, 0, 2, 1, num_slides+3)
 
     def set_dz(self):
         self.control.set_param('deadzone', self.dz_pt_box.text())
@@ -585,8 +594,12 @@ class PlotWidget(QWidget):
 class PtectApp:
     def __init__(self, data_folder: str = None):
         app = QApplication(sys.argv)
-        gui = PtectGUI(data_folder=data_folder)
+        gui = PtectGUI(data_folder=data_folder, parent=self)
         sys.exit(app.exec())
+
+    # def reset(self):
+    #     self.gui.destroy()
+    #     self.gui = PtectGUI(data_folder=None)
 
 
 if __name__ == '__main__':
