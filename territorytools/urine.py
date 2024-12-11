@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
-from territorytools.utils import xy_to_cm, rotate_xy
+from territorytools.utils import xy_to_cm, rotate_xy, intersect2d
 
 
 def sleap_to_fill_pts(sleap_h5):
@@ -200,14 +200,8 @@ class Peetector:
         # smooth frame
         frame_smooth = self.smooth_frame(f1)
 
-        # mask valid zone
-        valid_frame = self.mask_valid_zone(frame_smooth)
-
-        # remove deadzones
-        dz_frame = self.fill_deadzones(valid_frame)
-
         # mask by thermal threshold
-        heat_mask = np.uint8(255 * (dz_frame > hot_thresh))
+        heat_mask = np.uint8(255 * (frame_smooth > hot_thresh))
         test = heat_mask.copy()
 
         # dilate resulting mask to hopefully merge mouse parts and expand urine
@@ -217,10 +211,21 @@ class Peetector:
         # fill in all the given points with black
         fill_frame = self.fill_frame_with_points(di_frame, pts, im_w, im_h)
 
+        kern = self.dilate_kern
+        e_kern = np.ones((kern, kern), np.uint8)
+        er_frame = cv2.erode(fill_frame, e_kern, iterations=1)
+
+        # mask valid zone
+        valid_frame = self.mask_valid_zone(er_frame)
+
+        # remove deadzones
+        dz_frame = self.fill_deadzones(valid_frame)
+
+
         # if urine detected set output to urine indices
         urine_xys = []
-        if np.sum(fill_frame) > 0:
-            urine_xys = np.argwhere(fill_frame > 0)
+        if np.sum(dz_frame) > 0:
+            urine_xys = np.argwhere(dz_frame > 0)
 
         # mask valid zone but white
         valid_frame = self.mask_valid_zone(frame_smooth, fill='w')
@@ -236,6 +241,7 @@ class Peetector:
             cool_xys = np.argwhere(cool_mask > 0)
 
         return urine_xys, cool_xys, [f1, frame_smooth, dz_frame, test, di_frame, fill_frame, cool_mask]
+
 
     def set_valid_arena(self, shape, *args):
         self.valid_zone = make_shape_mask(self.width, self.height, shape,
@@ -435,6 +441,12 @@ class PBuffer:
         if self.pos >= self.size:
             self.pos = 0
 
+    def pop(self):
+        pos = self.pos - 1
+        if pos < 0:
+            pos = self.size - 1
+        return self.buffer[pos]
+
     def no_empty(self):
         any_none = np.vectorize(type)(self.buffer)
         any_none = np.any(any_none == NoneType)
@@ -450,21 +462,11 @@ class PBuffer:
 
         true_events = []
         if self.no_empty():
-            this_evts = self.buffer[self.pos]
-            win_evts = self.buffer.copy()
-
-            bool_acc = np.ones(np.shape(this_evts)[0])
-            for e in win_evts:
-                str_xys = np.char.add(this_evts.astype(str)[:, 0], this_evts.astype(str)[:, 1])
-                str_exys = np.char.add(e.astype(str)[:, 0], e.astype(str)[:, 1])
-                all_next = np.isin(str_xys, str_exys)
-                bool_acc = np.logical_and(bool_acc, all_next)
-            keep_inds = bool_acc
-            if np.any(keep_inds):
-                good_evts = this_evts[keep_inds]
-                good_evts = np.fliplr(good_evts)
-                true_events.append(good_evts)
-                true_events = good_evts
+            this_evts = self.pop()
+            int_evts = this_evts
+            for b in self.buffer:
+                int_evts = intersect2d(int_evts, b)
+            true_events = int_evts
         return true_events
 
 def proj_urine_across_time(urine_data, thresh=0):
@@ -549,3 +551,49 @@ def dist_to_urine(x, y, expand_urine, thresh=0):
         #     if len(valid_urine) > 0:
         #         true_evts.append(t_e[te_inds, :])
         #         true_ts.append(t)
+
+    # def peetect(self, frame, pts, hot_thresh=70, cool_thresh=30):
+    #     # get frame dataset, convert to grey
+    #     im_w = np.shape(frame)[1]
+    #     im_h = np.shape(frame)[0]
+    #     f1 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #
+    #     # smooth frame
+    #     frame_smooth = self.smooth_frame(f1)
+    #
+    #     # mask valid zone
+    #     valid_frame = self.mask_valid_zone(frame_smooth)
+    #
+    #     # remove deadzones
+    #     dz_frame = self.fill_deadzones(valid_frame)
+    #
+    #     # mask by thermal threshold
+    #     heat_mask = np.uint8(255 * (dz_frame > hot_thresh))
+    #     test = heat_mask.copy()
+    #
+    #     # dilate resulting mask to hopefully merge mouse parts and expand urine
+    #     di_frame = self.dilate_frame(heat_mask)
+    #     # di_frame = heat_mask
+    #
+    #     # fill in all the given points with black
+    #     fill_frame = self.fill_frame_with_points(di_frame, pts, im_w, im_h)
+    #
+    #     # if urine detected set output to urine indices
+    #     urine_xys = []
+    #     if np.sum(fill_frame) > 0:
+    #         urine_xys = np.argwhere(fill_frame > 0)
+    #
+    #     # mask valid zone but white
+    #     valid_frame = self.mask_valid_zone(frame_smooth, fill='w')
+    #
+    #     # whiten deadzones
+    #     dz_frame_w = self.fill_deadzones(valid_frame, fill='w')
+    #
+    #     cool_mask = dz_frame_w < cool_thresh
+    #
+    #     # cool xys
+    #     cool_xys = []
+    #     if np.sum(cool_mask) > 0:
+    #         cool_xys = np.argwhere(cool_mask > 0)
+    #
+    #     return urine_xys, cool_xys, [f1, frame_smooth, dz_frame, test, di_frame, fill_frame, cool_mask]
