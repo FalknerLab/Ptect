@@ -194,19 +194,37 @@ def intersect2d(arr0, arr1, return_int=True):
     te_1d = list([''.join(str(row)) for row in arr1])
     valid_int, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
     if return_int:
-        return arr0[ce_inds[0]]
+        return arr0[ce_inds, :]
     else:
         bool_arr = np.ones_like(arr1[:, 0]).astype(bool)
         bool_arr[te_inds] = False
         return arr1[bool_arr, :], bool_arr
 
+def find_rename_cam_folders(root_dir, cam_dict=None):
+    if cam_dict is None:
+        cam_dict = {'19060809': 'side1',
+                    '19194088': 'side3',
+                    '19281943': 'top',
+                    '22049506': 'side2'}
+    conts = os.listdir(root_dir)
+    for f in conts:
+        next_dir = os.path.join(root_dir, f)
+        t_split = f.split('_')[-1]
+        if t_split == 'thermal':
+            os.rename(next_dir, os.path.join(root_dir, 'thermal'))
+        else:
+            f_suf = f.split('.')
+            if f_suf[-1] in cam_dict.keys():
+                os.rename(next_dir, os.path.join(root_dir, cam_dict[f_suf[-1]]))
+        if os.path.isdir(next_dir):
+            find_rename_cam_folders(next_dir, cam_dict=cam_dict)
 
 if __name__ == '__main__':
     # root_dir = 'D:/ptect_dataset/testing/kpms'
     # for f in os.listdir(root_dir):
     #     file_n = os.path.join(root_dir, f)
-    fix_sleap_h5('D:\\ptect_dataset\\PPsync4_Resident_DAB014_Intruder_DAB019_Day_0_Orientation_IRN\\Block0\\ppsync4_resident_dab014_intruder_dab019_day_0_block_0_orientation_irn_20240916_143016_top.h5',
-                 block=0, orientation='irn', cent_xy=(707, 541))
+    fix_sleap_h5('D:\\ptect_dataset\\PPsync4_Resident_DAB014_Intruder_DAB019_Day_0_Orientation_IRN\\Block0\\PPsync4_Resident_DAB014_Intruder_DAB019_Day_1_Block_0_Orientation_IRN_thermal.h5',
+                 block=0, orientation='irn', cent_xy=(318, 275))
 
     # root_dir = 'D:/ptect_dataset/kpms/grid_movies'
     # for f in os.listdir(root_dir):
@@ -217,3 +235,5 @@ if __name__ == '__main__':
     #         command = f'ffmpeg -i {f_path} {out_f}'
     #         print(command)
     #         os.system(command)
+
+    # find_rename_cam_folders('D:\\ptect_dataset')
