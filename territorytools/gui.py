@@ -1,5 +1,7 @@
 import sys
 import os
+import time
+
 import cv2
 import h5py
 import numpy as np
@@ -43,6 +45,7 @@ class PtectController:
             data_folder = get_data_dialog()
 
         self.frame_num = 0
+        self.t_frame = 0
         self.control_hz = 0
         self.valid = valid_dir(data_folder)
         if self.valid:
@@ -50,6 +53,7 @@ class PtectController:
             self.metadata = MDcontroller(t_files['ptmetadata.yml'])
             self.op_hz = self.metadata.get_val('Territory/optical_hz')
             self.t_offset_frames = self.metadata.get_val('Territory/thermal_offset')
+            self.t_frame = self.t_offset_frames
             self.therm_hz = self.metadata.get_val('Territory/thermal_hz')
             orient = self.metadata.get_val('Territory/orientation')
             self.control_hz = max(self.op_hz, self.therm_hz)
@@ -67,11 +71,12 @@ class PtectController:
             t_px_per_cm = self.metadata.get_val('Territory/thermal_px_per_cm')
             self.therm_vid = t_files['thermal.avi']
             self.ptect = Peetector(self.therm_vid, t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm,
-                                   rot_ang=orient)
-            self.test_frame = self.ptect.read_frame(0)[1]
+                                   rot_ang=orient, start_frame=self.t_frame)
+            self.test_frame = self.ptect.read_frame()[1]
             dz_data = self.metadata.get_val('Territory/deadzone')
             if len(dz_data) > 0:
                 self.set_param('deadzone', dz_data)
+            self.last_t_frame = self.test_frame
 
     def set_frame(self, frame_num: int):
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
@@ -114,7 +119,8 @@ class PtectController:
 
     def get_optical_frame(self):
         op_frame_num = round(self.frame_num * (self.op_hz / self.control_hz))
-        self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
+        if op_frame_num != self.frame_num:
+            self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
         ret, frame = self.optical_vid.read()
         for ind, sd in enumerate(self.sleap_data):
             not_nan = ~np.isnan(sd[0, :, op_frame_num])
@@ -130,15 +136,19 @@ class PtectController:
 
         c_im = np.empty((resize_h, resize_w, 3))
         ret, frame = self.get_optical_frame()
+        rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
         out_frame = None
-        t_frame_num = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
-        if ret:
-            urine_data, out_frame = self.ptect.peetect_frames(start_frame=t_frame_num,
-                                                            num_frames=1, return_frame=True)
-            rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
+        last_frame = self.t_frame
+        new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
+        if new_frame > last_frame:
+            urine_data, out_frame = self.ptect.peetect_frames(start_frame=new_frame, num_frames=1, return_frame=True)
             rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
-            c_im = np.hstack((rs_raw, rs_urine))
             self.update_data(urine_data)
+            self.t_frame = new_frame
+            self.last_t_frame = out_frame
+        else:
+            rs_urine = cv2.resize(self.last_t_frame, (resize_w // 2, resize_h))
+        c_im = np.hstack((rs_raw, rs_urine))
         self.set_frame(self.frame_num + 1)
         return c_im.astype('uint8'), frame, out_frame
 
@@ -158,7 +168,7 @@ class PtectController:
                 self.ptect.cool_thresh = value
                 self.metadata.set_key_val('Territory/ptect_cool_thresh', value)
             case 'time_thresh':
-                self.ptect.time_thresh = value
+                self.ptect.set_time_win(value)
                 self.metadata.set_key_val('Territory/ptect_time_thresh', value)
             case 'deadzone':
                 if type(value) == list:
@@ -239,7 +249,11 @@ class PtectGUI(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_gui)
-        self.timer.start(100)
+        self.timer.start(10)
+
+        self.draw_timer = QTimer(self)
+        self.draw_timer.timeout.connect(self.draw_plots)
+        self.draw_timer.start(1000)
 
         self.show()
 
@@ -354,40 +368,47 @@ class PtectGUI(QWidget):
 
         arena_params = self.arena_controls.get_arena_data()
         self.control.set_param('arena', arena_params)
-
         if self.playing:
-            hot_marks, split_marks = self.control.get_data('thermal')
-            if hot_marks is not None:
-                self.mark_plotter.clear()
-                self.mark_plotter.plot(hot_marks[:, 1], hot_marks[:, 2], s=0.05,
-                                       plot_style='scatter', c=hot_marks[:, 0],
-                                        marker='.', vmin=0, vmax=self.control.get_data('length'))
+            self.update_plots()
+            self.update_video()
 
-            self.raster_plotter.clear()
-            for ind, sm in enumerate(split_marks):
-                marks = np.unique(sm[:, 0])
-                self.raster_plotter.plot(np.vstack((marks, marks)), [ind, ind+1], c=MOUSE_COLORS_MPL[ind])
-            self.raster_plotter.plot([self.control.frame_num, self.control.frame_num], [0, 2], 'k--')
-            self.raster_plotter.gca().set_xlim(self.control.frame_num-400, self.control.frame_num+400)
+    def draw_plots(self):
+        for p in (self.xy_plotter, self.raster_plotter, self.vel_plotter, self.mark_plotter):
+            p.draw()
 
-            self.xy_plotter.clear()
-            mice_xys = self.control.get_data('optical', time_win=12000)
+    def update_video(self):
+        frames = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
+        frame = frames[0]
+        self.prev_im = frames[2]
+        w = frame.shape[1]
+        h = frame.shape[0]
+        q_frame = QImage(frame, w, h, 3 * w, QImage.Format_BGR888)
+        self.prev_frame.setPixmap(QPixmap(q_frame))
 
-            for ind, xy in enumerate(mice_xys):
-                self.xy_plotter.plot(xy[0], xy[1], c=MOUSE_COLORS_MPL[ind])
+    def update_plots(self):
+        hot_marks, split_marks = self.control.get_data('thermal')
+        if hot_marks is not None:
+            self.mark_plotter.clear()
+            self.mark_plotter.plot(hot_marks[:, 1], hot_marks[:, 2], s=0.05,
+                                   plot_style='scatter', c=hot_marks[:, 0],
+                                   marker='.', vmin=0, vmax=self.control.get_data('length'))
 
-            self.vel_plotter.clear()
-            self.vel_plotter.plot([self.control.frame_num, self.control.frame_num], [0, 2], 'k--')
-            self.vel_plotter.gca().set_xlim(self.control.frame_num - 400, self.control.frame_num + 400)
+        self.raster_plotter.clear()
+        for ind, sm in enumerate(split_marks):
+            marks = np.unique(sm[:, 0])
+            self.raster_plotter.plot(np.vstack((marks, marks)), [ind, ind + 1], c=MOUSE_COLORS_MPL[ind])
+        self.raster_plotter.plot([self.control.frame_num, self.control.frame_num], [0, 2], 'k--')
+        self.raster_plotter.gca().set_xlim(self.control.frame_num - 400, self.control.frame_num + 400)
 
-            frames = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
-            frame = frames[0]
-            self.prev_im = frames[2]
-            w = frame.shape[1]
-            h = frame.shape[0]
-            q_frame = QImage(frame, w, h, 3 * w, QImage.Format_BGR888)
-            self.prev_frame.setPixmap(QPixmap(q_frame))
+        self.xy_plotter.clear()
+        mice_xys = self.control.get_data('optical', time_win=12000)
 
+        for ind, xy in enumerate(mice_xys):
+            self.xy_plotter.plot(xy[0], xy[1], c=MOUSE_COLORS_MPL[ind])
+
+        self.vel_plotter.clear()
+        self.vel_plotter.plot([self.control.frame_num, self.control.frame_num], [0, 2], 'k--')
+        self.vel_plotter.gca().set_xlim(self.control.frame_num - 400, self.control.frame_num + 400)
 
 class SlideInputer(QGroupBox):
     def __init__(self, name, label=None):
@@ -582,6 +603,9 @@ class PlotWidget(QWidget):
                 self.current_pobj.append(my_ax.scatter(args[0], args[1], cmap=self.cmap, **kwargs))
         else:
             self.current_pobj.append(my_ax.plot(*args, **kwargs))
+        # self.canvas.draw()
+
+    def draw(self):
         self.canvas.draw()
 
     def colorbar(self, min_val, max_val, label='', orient='vertical'):
