@@ -1,3 +1,4 @@
+from multiprocessing import Process, Pipe
 from types import NoneType
 
 import cv2
@@ -63,6 +64,12 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
     out_mask = out_mask.astype('uint8')
     return out_mask
 
+def test(ptect, pipe):
+    for i in range(100):
+        pipe.send(i)
+        time.sleep(0.1)
+    pipe.close()
+
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
                  hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30,
@@ -112,6 +119,13 @@ class Peetector:
         if check_frames != self.time_thresh:
             self.time_thresh = check_frames
             self.buffer = PBuffer(self.time_thresh)
+
+    def process_from_metadata(self, metadata_controller):
+        parent_pipe, child_pipe = Pipe()
+        p = Process(target=test, args=(self, child_pipe,))
+        p.start()
+        return p, parent_pipe
+
 
     def peetect_frames(self, start_frame=None, num_frames=None, save_vid=None, show_vid=False, return_frame=False, verbose=False):
 
