@@ -1,10 +1,13 @@
 import sys
 import os
 import time
+from multiprocessing import Pipe, Process
+from multiprocessing.managers import Value
 
 import cv2
 import h5py
 import numpy as np
+import threading
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -43,7 +46,7 @@ class PtectController:
     def __init__(self, data_folder: str = None):
         if data_folder is None:
             data_folder = get_data_dialog()
-
+        self.test = 0
         self.frame_num = 0
         self.t_frame = 0
         self.control_hz = 0
@@ -205,6 +208,9 @@ class PtectController:
     def save_info(self):
         self.metadata.save_metadata(self.metadata.file_name)
 
+    def run_and_save(self):
+        p, parent_pipe = self.ptect.process_from_metadata('p')
+        return p, parent_pipe
 
 
 class PtectGUI(QWidget):
@@ -275,15 +281,32 @@ class PtectGUI(QWidget):
             else:
                 self.playing = False
         play.clicked.connect(play_video)
-        self.layout.addWidget(play, 5, 0, 1, 1)
+        # self.layout.addWidget(play, 5, 0, 1, 1)
 
         load_but = QPushButton('Load Folder')
         def load_data():
-            # self.app.reset()
             self.control = PtectController()
             self.set_controls()
         load_but.clicked.connect(load_data)
-        self.layout.addWidget(load_but, 5, 1, 1, 1)
+        # self.layout.addWidget(load_but, 5, 1, 1, 1)
+
+        run_but = QPushButton('Run and Save')
+        def run_ptect():
+            self.hide()
+            proc, pipe = self.control.run_and_save()
+            while proc.is_alive():
+                print(pipe.recv())
+            self.show()
+        run_but.clicked.connect(run_ptect)
+        # self.layout.addWidget(run_but, 5, 2, 1, 1)
+        but_group = QWidget()
+        sub_layout = QHBoxLayout()
+        sub_layout.addWidget(play)
+        sub_layout.addWidget(load_but)
+        sub_layout.addWidget(run_but)
+        but_group.setLayout(sub_layout)
+        self.layout.addWidget(but_group, 5, 0, 1, 1)
+
 
         info_gb = QGroupBox('Run Info')
         info_box = QVBoxLayout()
