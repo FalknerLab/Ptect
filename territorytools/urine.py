@@ -18,17 +18,12 @@ def sleap_to_fill_pts(sleap_h5):
     fill_pts = []
     last_pts = np.empty(num_mice * d1, dtype=np.ndarray)
     for i in range(t):
-        # for m in range(num_mice):
         move_pts = np.moveaxis(locations[i], 0, 2)
         all_xy = np.reshape(move_pts, (2, num_mice * d1))
-        # t_pts = locations[i, :, :, m]
-        # t_pts = np.moveaxis(t_pts, 0, 1)
         keep = ~np.all(np.isnan(all_xy), axis=0)
         if np.any(keep):
             k_pts = all_xy[:, keep].T
             last_pts = k_pts
-        # not_none = np.vectorize(type)(last_pts) != type(None)
-        # fill_pts.append(np.vstack(last_pts[not_none]))
         fill_pts.append(np.vstack(last_pts))
     return fill_pts
 
@@ -63,12 +58,6 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
         out_mask = cv2.fillPoly(im, pts, -1)
     out_mask = out_mask.astype('uint8')
     return out_mask
-
-def test(ptect, pipe):
-    for i in range(100):
-        pipe.send(i)
-        time.sleep(0.1)
-    pipe.close()
 
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
@@ -113,7 +102,7 @@ class Peetector:
 
     def set_frame(self, frame_num):
         self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
-        # self.buffer = PBuffer(self.time_thresh)
+        self.current_frame = frame_num
 
     def set_time_win(self, check_frames):
         if check_frames != self.time_thresh:
@@ -122,23 +111,14 @@ class Peetector:
 
     def process_from_metadata(self, metadata_controller):
         parent_pipe, child_pipe = Pipe()
-        p = Process(target=test, args=(self, child_pipe,))
-        p.start()
-        return p, parent_pipe
 
-
-    def peetect_frames(self, start_frame=None, num_frames=None, save_vid=None, show_vid=False, return_frame=False, verbose=False):
+    def run_ptect_video(self, start_frame=None, num_frames=None, save_vid=None, show_vid=False, verbose=False):
 
         if verbose:
             print('Running Peetect...')
 
         if start_frame is not None:
             self.set_frame(start_frame)
-
-        hot_thresh = self.heat_thresh
-        cool_thresh = self.cool_thresh
-        rot_ang = self.rot_ang
-        fill_pnts = self.fill_pts
 
         out_vid = None
         if save_vid is not None:
@@ -149,53 +129,20 @@ class Peetector:
         if num_frames is None:
             num_frames = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # collect frame times with urine and urine xys
-        urine_evts_times = []
-        urine_evts_xys = []
-        cool_evts_times = []
-        cool_evts_xys = np.empty((0, 2))
-        for f in range(0, num_frames):
-            if f % 1000 == 0 and verbose:
-                print('Running Peetect on frame: ', f, ' of ', num_frames)
+        out_acc = []
+        for i in range(num_frames):
+            if save_vid is not None or show_vid is not None:
+                out_data, out_frame = self.peetect_next_frame(return_frame=True)
+            else:
+                out_data, out_frame = self.peetect_next_frame(return_frame=False)
 
-            # run detection on next frame
-            is_read, frame_i = self.read_frame()
+            if save_vid is not None:
+                out_vid.write(out_frame)
 
-            if is_read:
-                this_evts, cool_evts, mask = self.peetect(frame_i, fill_pnts[self.current_frame], cool_thresh=cool_thresh, hot_thresh=hot_thresh)
-                self.buffer.push(this_evts)
-                good_events = self.buffer.check_ahead()
-                # if good urine detected, convert to cm and add to output
-                if len(good_events) > 0:
-                    urine_evts_times.append(f / self.hz)
-                    urine_evts_xys.append(good_events)
-
-                if len(cool_evts) > 0:
-                    cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
-                    cool_evts_xys = np.unique(cool_evts_xys, axis=0)
-
-                if self.frame_type == 2:
-                    out_frame = self.show_all_steps(mask, fill_pnts[self.current_frame])
-                else:
-                    out_frame = self.show_output(frame_i, good_events, fill_pnts[self.current_frame], cool_evts)
-
-                if save_vid is not None:
-                    out_vid.write(out_frame)
-
-                if show_vid:
-                    cv2.imshow('Peetect Output', out_frame)
-                    cv2.waitKey(1)
-                self.current_frame += 1
-        true_evts = urine_evts_xys
-        true_ts = urine_evts_times
-
-        urine_data = np.array([])
-        if len(true_evts) > 0:
-            true_evts_cm = self.urine_px_to_cm_rot(true_evts, rot_ang=rot_ang)
-
-            urine_data = expand_urine_data(true_evts_cm, times=true_ts)
-
-        out_data = (urine_data, cool_evts_xys)
+            if show_vid:
+                cv2.imshow('Peetect Output', out_frame)
+                cv2.waitKey(1)
+            out_acc.append(out_data)
 
         if save_vid is not None:
             out_vid.release()
@@ -206,10 +153,60 @@ class Peetector:
         if verbose:
             print('Peetect Finished')
 
-        if return_frame:
-            return out_data, out_frame
-        else:
-            return out_data
+        return out_acc
+
+
+    def peetect_next_frame(self, return_frame=False):
+
+        hot_thresh = self.heat_thresh
+        cool_thresh = self.cool_thresh
+        rot_ang = self.rot_ang
+        fill_pnts = self.fill_pts
+
+        # collect frame times with urine and urine xys
+        urine_evts_times = []
+        urine_evts_xys = []
+        cool_evts_times = []
+        cool_evts_xys = np.empty((0, 2))
+
+        f = self.current_frame
+
+        # run detection on next frame
+        is_read, frame_i = self.read_frame()
+        out_frame = None
+        if is_read:
+            this_evts, cool_evts, mask = self.peetect(frame_i, fill_pnts[self.current_frame], cool_thresh=cool_thresh, hot_thresh=hot_thresh)
+            self.buffer.push(this_evts)
+            good_events = self.buffer.check_ahead()
+            # if good urine detected, convert to cm and add to output
+            if len(good_events) > 0:
+                urine_evts_times.append(f / self.hz)
+                urine_evts_xys.append(good_events)
+
+            if len(cool_evts) > 0:
+                cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
+                cool_evts_xys = np.unique(cool_evts_xys, axis=0)
+
+
+            if return_frame:
+                if self.frame_type == 2:
+                    out_frame = self.show_all_steps(mask, fill_pnts[self.current_frame])
+                else:
+                    out_frame = self.show_output(frame_i, good_events, fill_pnts[self.current_frame], cool_evts)
+
+            self.current_frame += 1
+
+        true_evts = urine_evts_xys
+        true_ts = urine_evts_times
+
+        urine_data = np.array([])
+        if len(true_evts) > 0:
+            true_evts_cm = self.urine_px_to_cm_rot(true_evts, rot_ang=rot_ang)
+            urine_data = expand_urine_data(true_evts_cm, times=true_ts)
+        out_data = (urine_data, cool_evts_xys)
+
+        cur_frame = self.current_frame
+        return out_data, out_frame, cur_frame
 
     def peetect(self, frame, pts, hot_thresh=70, cool_thresh=30):
         # get frame dataset, convert to grey

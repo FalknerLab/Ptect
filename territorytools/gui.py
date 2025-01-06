@@ -1,19 +1,14 @@
 import sys
 import os
 import time
-from multiprocessing import Pipe, Process
-from multiprocessing.managers import Value
-
 import cv2
 import h5py
 import numpy as np
-import threading
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
-
 from territorytools.process import import_all_data, valid_dir, find_territory_files
 from territorytools.urine import Peetector
 from territorytools.ttclasses import MDcontroller
@@ -85,6 +80,7 @@ class PtectController:
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
             frame_num = 0
         self.frame_num = frame_num
+        self.ptect.set_frame(frame_num)
 
     def get_data(self, which_data, time_win=None):
         start_ind = self.frame_num - 1
@@ -120,6 +116,10 @@ class PtectController:
         else:
             return None
 
+    def run_ptect(self, return_frame=False):
+        out_data, out_frame, cur_frame = self.ptect.peetect_next_frame(return_frame)
+        return out_data, out_frame, cur_frame
+
     def get_optical_frame(self):
         op_frame_num = round(self.frame_num * (self.op_hz / self.control_hz))
         if op_frame_num != self.frame_num:
@@ -144,7 +144,7 @@ class PtectController:
         last_frame = self.t_frame
         new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
         if new_frame > last_frame:
-            urine_data, out_frame = self.ptect.peetect_frames(start_frame=new_frame, num_frames=1, return_frame=True)
+            urine_data, out_frame = self.ptect.peetect_next_frame(return_frame=True)
             rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
             self.update_data(urine_data)
             self.t_frame = new_frame
@@ -213,6 +213,29 @@ class PtectController:
         return p, parent_pipe
 
 
+class PtectWorker(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(int)
+    def run(self):
+        for i in range(5):
+            time.sleep(1)
+            self.progress.emit(i + 1)
+        self.finished.emit()
+
+class PtectThread(QThread):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.p_worker = PtectWorker(parent=self)
+        self.p_worker.moveToThread(self)
+        self.started.connect(self.p_worker.run)
+        self.p_worker.finished.connect(self.quit)
+        self.p_worker.finished.connect(self.p_worker.deleteLater)
+        self.finished.connect(self.deleteLater)
+
+    def connect(self, func):
+        self.p_worker.progress.connect(func)
+
+
 class PtectGUI(QWidget):
     playing = False
     thresh_controls = []
@@ -224,7 +247,8 @@ class PtectGUI(QWidget):
         self.resize(int(res.width()*0.8), int(res.height()*0.8))
         self.setWindowTitle('Ptect Preview GUI')
         icon_path = os.path.abspath('../resources/ptect_icon.png')
-        self.setWindowIcon(QIcon(icon_path))
+        self.icon = QIcon(icon_path)
+        self.setWindowIcon(self.icon)
 
         self.preview_frame_w = 1960
         self.preview_frame_h = 840
@@ -260,7 +284,7 @@ class PtectGUI(QWidget):
         self.draw_timer = QTimer(self)
         self.draw_timer.timeout.connect(self.draw_plots)
         self.draw_timer.start(1000)
-
+        self.popup_win = None
         self.show()
 
     def add_controls(self):
@@ -281,24 +305,39 @@ class PtectGUI(QWidget):
             else:
                 self.playing = False
         play.clicked.connect(play_video)
-        # self.layout.addWidget(play, 5, 0, 1, 1)
 
         load_but = QPushButton('Load Folder')
         def load_data():
             self.control = PtectController()
             self.set_controls()
         load_but.clicked.connect(load_data)
-        # self.layout.addWidget(load_but, 5, 1, 1, 1)
 
         run_but = QPushButton('Run and Save')
         def run_ptect():
             self.hide()
-            proc, pipe = self.control.run_and_save()
-            while proc.is_alive():
-                print(pipe.recv())
-            self.show()
+            self.popup_win = QWidget()
+            self.popup_win.resize(QSize(420, 120))
+            self.popup_win.setWindowIcon(self.icon)
+            self.popup_win.setWindowTitle('Running Ptect...')
+            nw_layout = QVBoxLayout()
+            message = QLabel('Ptecting... On Frame:')
+            nw_layout.addWidget(message)
+            self.popup_win.setLayout(nw_layout)
+            self.popup_win.show()
+            self.control.set_frame(0)
+            proc_thread = PtectThread(self)
+            def test(s):
+                message.setText(f'Ptecting... On Frame: {s}')
+                self.popup_win.repaint()
+            proc_thread.connect(test)
+            proc_thread.start()
+
+            def close_popup():
+                self.show()
+                self.popup_win.hide()
+            proc_thread.finished.connect(close_popup)
+
         run_but.clicked.connect(run_ptect)
-        # self.layout.addWidget(run_but, 5, 2, 1, 1)
         but_group = QWidget()
         sub_layout = QHBoxLayout()
         sub_layout.addWidget(play)
