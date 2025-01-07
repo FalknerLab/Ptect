@@ -144,7 +144,7 @@ class PtectController:
         last_frame = self.t_frame
         new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
         if new_frame > last_frame:
-            urine_data, out_frame = self.ptect.peetect_next_frame(return_frame=True)
+            urine_data, out_frame, f_num = self.ptect.peetect_next_frame(return_frame=True)
             rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
             self.update_data(urine_data)
             self.t_frame = new_frame
