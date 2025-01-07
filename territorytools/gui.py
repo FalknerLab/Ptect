@@ -215,11 +215,12 @@ class PtectController:
 
 class PtectWorker(QObject):
     finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    progress = pyqtSignal(tuple)
     def run(self):
-        for i in range(5):
-            time.sleep(1)
-            self.progress.emit(i + 1)
+        max_frame = 1000
+        for i in range(max_frame):
+            time.sleep(0.01)
+            self.progress.emit((i + 1, max_frame))
         self.finished.emit()
 
 class PtectThread(QThread):
@@ -319,15 +320,29 @@ class PtectGUI(QWidget):
             self.popup_win.resize(QSize(420, 120))
             self.popup_win.setWindowIcon(self.icon)
             self.popup_win.setWindowTitle('Running Ptect...')
-            nw_layout = QVBoxLayout()
+            nw_layout = QGridLayout()
             message = QLabel('Ptecting... On Frame:')
-            nw_layout.addWidget(message)
+            nw_layout.addWidget(message, 0, 0, 1, 2)
+            mouse_i_path = os.path.abspath('../resources/mouse_icon.png')
+            icon_w = QLabel()
+            icon_w.setPixmap(QPixmap(mouse_i_path))
+            finish_i_path = os.path.abspath('../resources/finish_icon.png')
+            finish_w = QLabel()
+            finish_w.setPixmap(QPixmap(finish_i_path))
+            nw_layout.addWidget(finish_w, 1, 1, 1, 1)
+            nw_layout.addWidget(icon_w, 1, 0, 1, 1)
             self.popup_win.setLayout(nw_layout)
+            self.popup_win.update()
             self.popup_win.show()
             self.control.set_frame(0)
             proc_thread = PtectThread(self)
             def test(s):
-                message.setText(f'Ptecting... On Frame: {s}')
+                end_x = finish_w.pos().x()
+                message.setText(f'Ptecting... On Frame: {s[0]} of {s[1]}')
+                frac_done = s[0] / s[1]
+                orig_p = icon_w.pos()
+                next_x = int(frac_done*end_x)
+                icon_w.move(next_x, orig_p.y())
                 self.popup_win.repaint()
             proc_thread.connect(test)
             proc_thread.start()
