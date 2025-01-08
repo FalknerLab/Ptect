@@ -1,3 +1,4 @@
+from abc import abstractmethod, ABC
 from multiprocessing import Process, Pipe
 from types import NoneType
 
@@ -59,6 +60,11 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
     out_mask = out_mask.astype('uint8')
     return out_mask
 
+class PtectPipe(ABC):
+    @abstractmethod
+    def send(self, *args):
+        pass
+
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
                  hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30,
@@ -88,9 +94,11 @@ class Peetector:
             self.set_valid_arena('circle', int(radius * px_per_cm))
         else:
             self.valid_zone = v_mask
+        self.total_frames = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
         self.buffer = PBuffer(check_frames)
         self.current_frame = start_frame
         self.set_frame(start_frame)
+        self.output_buffer = ()
 
 
     def get_length(self):
@@ -109,8 +117,28 @@ class Peetector:
             self.time_thresh = check_frames
             self.buffer = PBuffer(self.time_thresh)
 
-    def process_from_metadata(self, metadata_controller):
-        parent_pipe, child_pipe = Pipe()
+    def run_ptect(self, pipe: PtectPipe=None, start_frame=0, end_frame=0, save_path=None):
+        self.set_frame(start_frame)
+        if end_frame <= 0:
+            end_frame = self.total_frames
+
+        all_hot_data = np.empty((0, 3))
+        all_cool_data = np.empty((0, 3))
+
+        frame_c = 0
+        tot_frames = end_frame - start_frame
+        while self.current_frame < end_frame:
+            p_out = self.peetect_next_frame()[0]
+            all_hot_data = np.vstack((all_hot_data, p_out[0]))
+            all_cool_data = np.vstack((all_cool_data, p_out[1]))
+            pipe.send((frame_c, tot_frames))
+            frame_c += 1
+
+        if save_path is not None:
+            np.savez(save_path, hot_data=all_hot_data, cool_data=all_cool_data)
+        else:
+            return all_hot_data, all_cool_data
+
 
     def run_ptect_video(self, start_frame=None, num_frames=None, save_vid=None, show_vid=False, verbose=False):
 
@@ -167,7 +195,7 @@ class Peetector:
         urine_evts_times = []
         urine_evts_xys = []
         cool_evts_times = []
-        cool_evts_xys = np.empty((0, 2))
+        cool_evts_xys = []
 
         f = self.current_frame
 
@@ -184,8 +212,10 @@ class Peetector:
                 urine_evts_xys.append(good_events)
 
             if len(cool_evts) > 0:
-                cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
-                cool_evts_xys = np.unique(cool_evts_xys, axis=0)
+                cool_evts_times.append(f / self.hz)
+                cool_evts_xys.append(cool_evts)
+                # cool_evts_xys = np.vstack((cool_evts_xys, cool_evts))
+                # cool_evts_xys = np.unique(cool_evts_xys, axis=0)
 
 
             if return_frame:
@@ -196,15 +226,17 @@ class Peetector:
 
             self.current_frame += 1
 
-        true_evts = urine_evts_xys
-        true_ts = urine_evts_times
+        hot_data = np.empty((0, 3))
+        if len(urine_evts_xys) > 0:
+            hot_evts_cm = self.urine_px_to_cm_rot(urine_evts_xys, rot_ang=rot_ang)
+            hot_data = expand_urine_data(hot_evts_cm, times=urine_evts_times)
 
-        urine_data = np.array([])
-        if len(true_evts) > 0:
-            true_evts_cm = self.urine_px_to_cm_rot(true_evts, rot_ang=rot_ang)
-            urine_data = expand_urine_data(true_evts_cm, times=true_ts)
-        out_data = (urine_data, cool_evts_xys)
+        cool_data = np.empty((0, 3))
+        if len(cool_evts_xys) > 0:
+            cool_evts_cm = self.urine_px_to_cm_rot(cool_evts_xys, rot_ang=rot_ang)
+            cool_data = expand_urine_data(cool_evts_cm, times=cool_evts_times)
 
+        out_data = (hot_data, cool_data)
         cur_frame = self.current_frame
         return out_data, out_frame, cur_frame
 
