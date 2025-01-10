@@ -1,7 +1,5 @@
 import sys
 import os
-import time
-
 import cv2
 import h5py
 import numpy as np
@@ -10,7 +8,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
-from territorytools.process import import_all_data, valid_dir, find_territory_files
+from territorytools.process import process_all_data, valid_dir, find_territory_files
 from territorytools.urine import Peetector, PtectPipe
 from territorytools.ttclasses import MDcontroller
 from territorytools.plotting import add_territory_circle
@@ -47,6 +45,7 @@ class PtectController:
     def __init__(self, data_folder: str = None):
         if data_folder is None:
             data_folder = get_data_dialog()
+        self.data_folder = data_folder
         self.test = 0
         self.frame_num = 0
         self.t_frame = 0
@@ -122,10 +121,6 @@ class PtectController:
             return xys
         else:
             return None
-
-    def run_ptect(self, return_frame=False):
-        out_data, out_frame, cur_frame = self.ptect.peetect_next_frame(return_frame)
-        return out_data, out_frame, cur_frame
 
     def get_optical_frame(self):
         op_frame_num = round(self.frame_num * (self.op_hz / self.control_hz))
@@ -216,7 +211,8 @@ class PtectController:
         self.metadata.save_metadata(self.metadata.file_name)
 
     def run_and_save(self, ppipe):
-        self.ptect.run_ptect(pipe=ppipe, save_path=self.save_path)
+        self.ptect.run_ptect(pipe=ppipe, save_path=self.save_path, end_frame=1000)
+        process_all_data(self.data_folder, skip_ptect=False)
 
 class PtectGUIpipe(PtectPipe):
     def __init__(self, pipe: pyqtSignal(tuple)):
@@ -226,30 +222,42 @@ class PtectGUIpipe(PtectPipe):
         self.pipe.emit(args[0])
 
 
-class PtectWorker(QObject):
-    finished = pyqtSignal()
+class RunSignals(QObject):
     progress = pyqtSignal(tuple)
+    finished = pyqtSignal()
 
-    def __init__(self, ptect_cont: PtectController, parent=None):
-        super().__init__(parent)
+
+class PtectRunner(QRunnable):
+    def __init__(self, ptect_cont: PtectController):
+        super().__init__()
+        self.signals = RunSignals()
         self.ptect_cont = ptect_cont
 
     def run(self):
-        self.ptect_cont.run_and_save(PtectGUIpipe(self.progress))
-        self.finished.emit()
+        self.ptect_cont.run_and_save(PtectGUIpipe(self.signals.progress))
+        self.signals.finished.emit()
 
-class PtectThread(QThread):
-    def __init__(self, ptect_cont, parent=None):
-        super().__init__(parent)
-        self.p_worker = PtectWorker(ptect_cont, parent=self)
-        self.p_worker.moveToThread(self)
-        self.started.connect(self.p_worker.run)
-        self.p_worker.finished.connect(self.quit)
-        self.p_worker.finished.connect(self.p_worker.deleteLater)
-        self.finished.connect(self.deleteLater)
+    def set_stop_cb(self, stop_cb):
+        self.signals.finished.connect(stop_cb)
 
-    def connect(self, func):
-        self.p_worker.progress.connect(func)
+
+class PtectThread(QThreadPool):
+    result = pyqtSignal(tuple)
+
+    def __init__(self, ptect_cont: PtectController):
+        super().__init__()
+        self.ptect_cont = ptect_cont
+
+    def spawn_workers(self, stop_cb=None):
+        worker = PtectRunner(self.ptect_cont)
+        worker.signals.progress.connect(self.emit_worker_output)
+        if stop_cb is not None:
+            worker.set_stop_cb(stop_cb)
+        self.start(worker)
+
+    def emit_worker_output(self, output):
+        self.result.emit(output)
+
 
 class PtectMainWindow(QMainWindow):
     def __init__(self, data_folder=None):
@@ -257,18 +265,15 @@ class PtectMainWindow(QMainWindow):
         print('Importing Data...')
         self.control = PtectController(data_folder=data_folder)
         self.preview = PtectPreviewWindow(ptect_cont=self.control, parent=self)
-        self.run_win = PtectRunWindow(self.control)
+        self.run_win = PtectRunWindow(self.control, parent=self)
         self.preview.show()
-        # self.run_win.show()
 
     def start_ptect(self):
         self.preview.hide()
         self.run_win.show()
-        # save_path = get_save_dialog()
-        # self.control.save_path = save_path
-
-        self.run_win.timer.start(100)
-        self.run_win.run(self.stop_ptect)
+        save_path = get_save_dialog()
+        self.control.save_path = save_path
+        self.run_win.thread_pool.spawn_workers(stop_cb=self.stop_ptect)
 
     def stop_ptect(self):
         self.run_win.hide()
@@ -276,54 +281,51 @@ class PtectMainWindow(QMainWindow):
 
 
 class PtectRunWindow(QWidget):
-    def __init__(self, ptect_cont):
+    def __init__(self, ptect_cont, parent=None):
         super().__init__()
+        self.parent = parent
         self.control = ptect_cont
         icon_path = os.path.abspath('../resources/ptect_icon.png')
         self.icon = QIcon(icon_path)
         self.setWindowIcon(self.icon)
-        self.resize(QSize(420, 120))
+        res = self.screen().size()
+        self.setGeometry(int(res.width()/2 - 60), int(res.height()/2 - 210), 420, 120)
+        self.setFixedSize(420, 120)
         self.setWindowIcon(self.icon)
         self.setWindowTitle('Running Ptect...')
-        nw_layout = QGridLayout()
-        self.message = QLabel('Ptecting... On Frame:')
-        nw_layout.addWidget(self.message, 0, 0, 1, 2)
-        mouse_i_path = os.path.abspath('../resources/mouse_icon.png')
-        icon_w = QLabel()
-        icon_w.setPixmap(QPixmap(mouse_i_path))
+
         finish_i_path = os.path.abspath('../resources/finish_icon.png')
-        finish_w = QLabel()
-        finish_w.setPixmap(QPixmap(finish_i_path))
-        nw_layout.addWidget(finish_w, 1, 1, 1, 1)
-        nw_layout.addWidget(icon_w, 1, 0, 1, 1)
-        self.setLayout(nw_layout)
+        self.finish_w = QLabel(self)
+        self.finish_w.setPixmap(QPixmap(finish_i_path))
+        self.finish_w.move(340, 60)
+
+        self.message = QLabel('Ptecting... On Frame:', self)
+        self.message.move(10, 10)
+        self.mouse_i_path = os.path.abspath('../resources/mouse_icon.png')
+        self.icon_w = QLabel(self)
+        self.icon_w.setPixmap(QPixmap(self.mouse_i_path))
+        self.icon_w.move(20, 60)
+
         self.start = 0
         self.stop = 0
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_run)
+        self.thread_pool = PtectThread(self.control)
+        self.register_actions()
 
-    def update_run(self):
-        # self.message.setText(f'Ptecting... On Frame: {self.start} of {self.stop}')
-        # self.repaint()
-        print(self.start, self.stop)
+    def register_actions(self):
+        self.thread_pool.result.connect(self.update_run)
 
-    def run(self, stop_cb):
-        self.control.set_frame(0)
-        proc_thread = PtectThread(self.control, parent=self)
+    def update_run(self, s):
+        end_x = self.finish_w.pos().x()
+        frac_done = s[0] / s[1]
+        next_x = int(frac_done*end_x)
+        orig_p = self.icon_w.pos()
+        self.icon_w.move(next_x, orig_p.y())
+        self.icon_w.update()
 
-        def test(s):
-            self.start = s[0]
-            self.stop = s[1]
-
-            # end_x = finish_w.pos().x()
-            # frac_done = s[0] / s[1]
-            # orig_p = icon_w.pos()
-            # next_x = int(frac_done*end_x)
-            # icon_w.move(next_x, orig_p.y())
-
-        proc_thread.connect(test)
-        proc_thread.start()
-        proc_thread.finished.connect(stop_cb)
+        self.message.clear()
+        self.message = QLabel(f'Ptecting... On Frame: {s[0]} of {s[1]}', self)
+        self.message.move(10, 10)
+        self.message.show()
 
 
 class PtectPreviewWindow(QWidget):

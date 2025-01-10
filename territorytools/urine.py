@@ -1,7 +1,5 @@
 from abc import abstractmethod, ABC
-from multiprocessing import Process, Pipe
 from types import NoneType
-
 import cv2
 import h5py
 import numpy as np
@@ -9,7 +7,6 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
 from territorytools.utils import xy_to_cm, rotate_xy, intersect2d
-import time
 
 
 def sleap_to_fill_pts(sleap_h5):
@@ -134,8 +131,12 @@ class Peetector:
             pipe.send((frame_c, tot_frames))
             frame_c += 1
 
+        hot_half = np.hstack((all_hot_data, np.ones_like(all_hot_data[:, 0])))
+        cool_half = np.hstack((all_cool_data, np.zeros_like(all_cool_data[:, 0])))
+        all_data = np.vstack((hot_half, cool_half))
+
         if save_path is not None:
-            np.savez(save_path, hot_data=all_hot_data, cool_data=all_cool_data)
+            np.savez(save_path, urine_data=all_data)
         else:
             return all_hot_data, all_cool_data
 
