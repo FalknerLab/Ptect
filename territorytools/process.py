@@ -9,35 +9,21 @@ from territorytools.utils import rotate_xy
 from territorytools.urine import Peetector, urine_segmentation
 
 
-def make_run_data_struct(run_folder_root, skip_ptect=True, kpms_csv=None):
-    data_lists = [None, None]
-    fold_ids = ['Block0', 'Block1']
-    md_path = find_file_recur(run_folder_root, 'metadata.yml')
-    md_dict = None
-    out_data = {}
-    if md_path is not None:
-        md_dict = yaml.safe_load(open(md_path, 'r'))
-        for ind, f in enumerate(fold_ids):
-            this_data = []
-            this_path = os.path.join(run_folder_root, f)
-            if os.path.exists(this_path):
-                if valid_dir(this_path):
-                    print(this_path)
-                    files_dict = find_territory_files(this_path)
-                    if f == 'Block1':
-                        files_dict['kpms_csv'] = kpms_csv
-                    this_data = import_all_data(files_dict, md_dict, block=ind, skip_ptect=skip_ptect, show_all=2)
-                else:
-                    print(f'{f} Folder does not contain all territory dataset files (top.mp4, top.h5, thermal.mp4, thermal.h5)')
-                data_lists[ind] = this_data
-        out_data = {'Formation': data_lists[0],
-                    'Exploration': data_lists[1]}
-    return out_data, md_dict
+def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=True):
 
+    if valid_dir(run_folder_root):
+        print(run_folder_root)
+    else:
+        print(f'{run_folder_root} does not contain all territory dataset files (ptmetadata.yml, top.mp4, top.h5, thermal.mp4, thermal.h5)')
+        return None
 
-def import_all_data(files_dict, md_dict, show_all=False, start_t_sec=0, skip_ptect=True, block=1):
+    files_dict = find_territory_files(run_folder_root)
+
+    md_path = find_file_recur(run_folder_root, 'ptmetadata.yml')
+    md_dict = yaml.safe_load(open(md_path, 'r'))
 
     folder_name = files_dict['root']
+    num_mice = md_dict['Territory']['num_mice']
     optical_hz = md_dict['Territory']['optical_hz']
     thermal_hz = md_dict['Territory']['thermal_hz']
     thermal_px_per_cm = md_dict['Territory']['thermal_px_per_cm']
@@ -49,25 +35,22 @@ def import_all_data(files_dict, md_dict, show_all=False, start_t_sec=0, skip_pte
     ptect_smooth_kern = md_dict['Territory']['ptect_smooth_kern']
     ptect_dilate_kern = md_dict['Territory']['ptect_dilate_kern']
 
-
     out_data = files_dict['output.npy']
 
-    # if out_data is not None:
-    #     run_data = np.load(out_data, allow_pickle=True)
-    #     return run_data
+    if out_data is not None:
+        run_data = np.load(out_data, allow_pickle=True)
+        return run_data
 
     orient = md_dict['Territory']['orientation'].lower()
     op_cent = md_dict['Territory']['optical_center']
     therm_cent = md_dict['Territory']['thermal_center']
 
     fixed_top = files_dict['fixedtop.h5']
-    fixed_therm = files_dict['fixedtherm.h5']
 
     if files_dict['fixedtop.h5'] is None:
-        fixed_top = clean_sleap_h5(files_dict['top.h5'], block=block, orientation=orient, suff='fixedtop', cent_xy=op_cent)
+        fixed_top = clean_sleap_h5(files_dict['top.h5'], num_mice=num_mice, orientation=orient, suff='fixedtop', cent_xy=op_cent)
 
-    if files_dict['fixedtherm.h5'] is None:
-        fixed_therm = clean_sleap_h5(files_dict['thermal.h5'], block=block, orientation=orient, cent_xy=therm_cent, suff='fixedtherm')
+    therm = files_dict['thermal.h5']
 
     print('Loading SLEAP dataset...')
     sleap_file = h5py.File(fixed_top, 'r')
@@ -95,8 +78,15 @@ def import_all_data(files_dict, md_dict, show_all=False, start_t_sec=0, skip_pte
 
     urine_seg = []
     urine_mouse = []
-    if out_data is None and not skip_ptect:
-        peetect = Peetector(files_dict['thermal.avi'], fixed_therm,
+    urine_data = []
+    ptect_data = files_dict['ptect.npz']
+
+    if ptect_data is not None:
+        ptect = np.load(ptect_data, allow_pickle=True)
+        urine_data = ptect['hot_data']
+
+    if ptect_data is None and not skip_ptect:
+        peetect = Peetector(files_dict['thermal.avi'], therm,
                             hot_thresh=urine_heat_thresh,
                             cold_thresh=urine_cool_thresh,
                             cent_xy=therm_cent,
@@ -110,12 +100,12 @@ def import_all_data(files_dict, md_dict, show_all=False, start_t_sec=0, skip_pte
         urine_data = peetect.peetect_frames(save_vid=pt_vid_path,
                                             show_vid=show_all,
                                             start_frame=int(start_t_sec*thermal_hz))
-        if len(urine_data) > 0:
-            # urine_seg = urine_segmentation(urine_data)
-            urine_seg = []
-            urine_mouse = np.zeros_like(urine_data[:, 1])
-            if not block:
-                urine_mouse = (urine_data[:, 1] > 0).astype(int)
+    if len(urine_data) > 0:
+        # urine_seg = urine_segmentation(urine_data)
+        urine_seg = []
+        urine_mouse = np.zeros_like(urine_data[:, 1])
+        if num_mice > 1:
+            urine_mouse = (urine_data[:, 1] > 0).astype(int)
 
     kpms_data = None
     if 'kpms_csv' in files_dict.keys():
@@ -157,7 +147,7 @@ def import_all_data(files_dict, md_dict, show_all=False, start_t_sec=0, skip_pte
 
 
 def find_territory_files(root_dir: str):
-    target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5', 'ptmetadata.yml', 'fixedtherm.h5', 'fixedtop.h5', 'ptdata.npy', 'output.npy']
+    target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5', 'ptmetadata.yml', 'fixedtop.h5', 'ptect.npz', 'output.npy']
     out_paths = {s: None for s in target_sufs}
     out_paths['root'] = root_dir
     for t in target_sufs:
