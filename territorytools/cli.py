@@ -1,7 +1,5 @@
 import argparse
-from gui import PtectGUI
-from process import import_all_data
-
+from gui import PtectApp
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='TerritoryTools',
@@ -12,4 +10,4 @@ if __name__ == '__main__':
     parser.add_argument('-gui', action='store_true', help='Pass to enable GUI')
     args = parser.parse_args()
     if args.gui:
-        PtectGUI(data_folder=args.datafolder)
+        PtectApp(data_folder=args.datafolder)
