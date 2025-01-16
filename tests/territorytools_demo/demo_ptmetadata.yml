@@ -1,0 +1,82 @@
+NWBFile:
+  experiment_description: Demo Ptect Run
+  experimenter:
+  - Allen, David
+  institution: Princeton University
+  keywords: null
+  lab: Falkner Lab
+  notes: null
+  session_description: First 5min of marking phase
+  session_id: null
+  session_start_time: null
+Subject:
+  date_of_birth: null
+  description: null
+  genotype: wt
+  sex: M
+  species: Mus musculus
+  strain: CD1
+  subject_id: Sub
+  weight: null
+Territory:
+  arena_data: 197
+  arena_type: circle
+  day: 0
+  deadzone:
+  - - - 33
+      - 47
+    - - 283
+      - 174
+    - - 314
+      - 165
+    - - 339
+      - 164
+    - - 354
+      - 178
+    - - 570
+      - 26
+    - - 593
+      - 58
+    - - 363
+      - 209
+    - - 362
+      - 230
+    - - 344
+      - 248
+    - - 331
+      - 257
+    - - 339
+      - 470
+    - - 312
+      - 468
+    - - 308
+      - 256
+    - - 289
+      - 246
+    - - 276
+      - 226
+    - - 272
+      - 207
+    - - 21
+      - 69
+  experiment_id: Demo
+  num_mice: 2
+  optical_center:
+  - 640
+  - 508
+  optical_hz: 40
+  optical_px_per_cm: 12.63123
+  orientation: RNI
+  other: Mouse2
+  ptect_cool_thresh: 42
+  ptect_dilate_kern: 5
+  ptect_heat_thresh: 75
+  ptect_smooth_kern: 5
+  ptect_time_thresh: 20
+  self: Mouse1
+  thermal_center:
+  - 329
+  - 233
+  thermal_hz: 40
+  thermal_offset: 0
+  thermal_px_per_cm: 7.2178
