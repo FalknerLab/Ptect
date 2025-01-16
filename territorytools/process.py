@@ -3,6 +3,7 @@ import yaml
 import shutil
 import h5py
 import numpy as np
+import pynwb as nwb
 
 from territorytools.behavior import get_territory_data, interp_behavs, compute_preferences, make_design_matrix
 from territorytools.utils import rotate_xy
@@ -34,6 +35,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
     urine_cool_thresh = md_dict['Territory']['ptect_cool_thresh']
     ptect_smooth_kern = md_dict['Territory']['ptect_smooth_kern']
     ptect_dilate_kern = md_dict['Territory']['ptect_dilate_kern']
+    dz = md_dict['Territory']['deadzone']
 
     out_data = files_dict['output.npy']
 
@@ -45,10 +47,10 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
     op_cent = md_dict['Territory']['optical_center']
     therm_cent = md_dict['Territory']['thermal_center']
 
-    fixed_top = files_dict['fixedtop.h5']
+    fixed_top = files_dict['top.h5']
 
-    if files_dict['fixedtop.h5'] is None:
-        fixed_top = clean_sleap_h5(files_dict['top.h5'], num_mice=num_mice, orientation=orient, suff='fixedtop', cent_xy=op_cent)
+    # if files_dict['fixedtop.h5'] is None:
+    #     fixed_top = clean_sleap_h5(files_dict['top.h5'], num_mice=num_mice, orientation=orient, suff='fixedtop', cent_xy=op_cent)
 
     therm = files_dict['thermal.h5']
 
@@ -83,23 +85,25 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
 
     if ptect_data is not None:
         ptect = np.load(ptect_data, allow_pickle=True)
-        urine_data = ptect['hot_data']
+        urine_data = ptect['urine_data']
 
     if ptect_data is None and not skip_ptect:
         peetect = Peetector(files_dict['thermal.avi'], therm,
                             hot_thresh=urine_heat_thresh,
                             cold_thresh=urine_cool_thresh,
+                            check_frames=urine_time_thresh,
                             cent_xy=therm_cent,
                             px_per_cm=thermal_px_per_cm,
                             hz=thermal_hz,
                             s_kern=ptect_smooth_kern,
                             di_kern=ptect_dilate_kern)
-        # peetect.add_dz(zone=fr'block{block}')
-        f_parts = os.path.split(folder_name)[-1]
-        pt_vid_path = os.path.join(folder_name, f_parts + '_ptvid.mp4')
-        urine_data = peetect.peetect_frames(save_vid=pt_vid_path,
-                                            show_vid=show_all,
-                                            start_frame=int(start_t_sec*thermal_hz))
+        peetect.add_dz(zone=dz)
+        peetect.run_ptect(save_path='test.npz')
+        # f_parts = os.path.split(folder_name)[-1]
+        # pt_vid_path = os.path.join(folder_name, f_parts + '_ptvid.mp4')
+        # urine_data = peetect.peetect_frames(save_vid=pt_vid_path,
+        #                                     show_vid=show_all,
+        #                                     start_frame=int(start_t_sec*thermal_hz))
     if len(urine_data) > 0:
         # urine_seg = urine_segmentation(urine_data)
         urine_seg = []
@@ -138,12 +142,36 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
                     'data_folder': folder_name}
         mouse_list.append(out_dict)
 
-    if out_data is None and not skip_ptect:
+    if out_data is None:
         f_parts = os.path.split(folder_name)[-1]
-        save_path = os.path.join(folder_name, f_parts + '_output.npy')
-        np.save(save_path, mouse_list, allow_pickle=True)
+        save_path = os.path.join(folder_name, f_parts + '_output.nwb')
+        make_nwb(mouse_list, md_dict, save_path)
+        # np.save(save_path, mouse_list, allow_pickle=True)
 
     return mouse_list
+
+
+def make_nwb(data, metadata, file_name):
+    sess_desc= ''
+    id = 0
+    start_time = 0
+    people = []
+    lab = ''
+    place = ''
+    exp_desc = ''
+    keywords = []
+    nwb_file = nwb.NWBFile(
+        session_description=sess_desc,  # required
+        identifier=str(id),  # required
+        session_start_time=start_time,  # required
+        experimenter=people,  # optional
+        lab=lab,  # optional
+        institution=place,  # optional
+        experiment_description=exp_desc,  # optional
+        keywords=keywords,  # optional
+    )
+
+    return None
 
 
 def find_territory_files(root_dir: str):
@@ -158,7 +186,7 @@ def find_territory_files(root_dir: str):
 
 
 def valid_dir(root_dir: str):
-    target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'fixedtop.h5']
+    target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5']
     contains_f = np.zeros(len(target_sufs)).astype(bool)
     for ind, t in enumerate(target_sufs):
         has_t = find_file_recur(root_dir, t)
@@ -194,7 +222,7 @@ def convert_npy_h5(npy_path):
     h5_file.close()
 
 
-def clean_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='fixed'):
+def clean_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='fixed', num_mice=1):
     rot_dict = {'rni': 0,
                 'none': 0,
                 'irn': 120,
@@ -212,7 +240,7 @@ def clean_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff
     p_scores = slp_data['point_scores'][:]
     t_occupancy = slp_data['track_occupancy'][:]
     len_t = np.shape(tracks)[-1]
-    if block:
+    if num_mice == 1:
         out_name = slp_data['track_names'][0][:]
         out_ts = tracks[0][None, :]
         last_cent = np.nanmean(out_ts[0, :, :, 0], axis=1)
