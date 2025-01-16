@@ -401,7 +401,7 @@ class PtectRunWindow(PtectWindow):
 
         self.message = QLabel('Ptecting... On Frame:', self)
         self.message.move(10, 10)
-        self.mouse_i_path = os.path.abspath('../resources/mouse_icon2.png')
+        self.mouse_i_path = os.path.abspath('../resources/mouse_icon.png')
         self.icon_w = QLabel(self)
         self.icon_w.setPixmap(QPixmap(self.mouse_i_path))
         self.icon_w.move(20, 60)
