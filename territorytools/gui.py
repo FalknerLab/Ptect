@@ -9,9 +9,9 @@ from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
 from territorytools.process import process_all_data, valid_dir, find_territory_files
-from territorytools.urine import Peetector, PtectPipe
+from territorytools.urine import Peetector, PtectPipe, make_mark_raster
 from territorytools.ttclasses import MDcontroller
-from territorytools.plotting import add_territory_circle
+from territorytools.plotting import add_territory_circle, territory_heatmap
 from territorytools.behavior import get_territory_data
 from territorytools.utils import intersect2d
 import matplotlib
@@ -32,10 +32,11 @@ def get_data_dialog():
     data_fold = dialog.getExistingDirectory()
     return data_fold
 
-def get_save_dialog():
+def get_save_dialog(filter='', suffix=''):
     dialog = QFileDialog()
-    save_path = dialog.getSaveFileName()
-    return save_path[0]
+    save_path = dialog.getSaveFileName(filter=filter)
+    out_path = save_path[0] + suffix + save_path[1]
+    return out_path
 
 
 class PtectController:
@@ -62,7 +63,7 @@ class PtectController:
             orient = self.metadata.get_val('Territory/orientation')
             self.control_hz = max(self.op_hz, self.therm_hz)
             self.optical_vid = cv2.VideoCapture(t_files['top.mp4'])
-            sleap_file = h5py.File(t_files['fixedtop.h5'], 'r')
+            sleap_file = h5py.File(t_files['top.h5'], 'r')
             self.sleap_data = sleap_file['tracks']
             self.optical_data = []
             for i in self.sleap_data:
@@ -211,8 +212,14 @@ class PtectController:
         self.metadata.save_metadata(self.metadata.file_name)
 
     def run_and_save(self, ppipe):
-        self.ptect.run_ptect(pipe=ppipe, save_path=self.save_path, end_frame=1000)
-        process_all_data(self.data_folder, skip_ptect=False)
+        self.ptect.run_ptect(pipe=ppipe, save_path=self.save_path)
+
+    def get_file_list(self):
+        return find_territory_files(self.data_folder)
+
+    def load_output(self):
+        return process_all_data(self.data_folder)
+
 
 class PtectGUIpipe(PtectPipe):
     def __init__(self, pipe: pyqtSignal(tuple)):
@@ -259,6 +266,16 @@ class PtectThread(QThreadPool):
         self.result.emit(output)
 
 
+class PtectWindow(QWidget):
+    def __init__(self, ptect_cont: PtectController=None, parent=None):
+        super().__init__()
+        self.parent = parent
+        self.control = ptect_cont
+        icon_path = os.path.abspath('../resources/ptect_icon.png')
+        self.icon = QIcon(icon_path)
+        self.setWindowIcon(self.icon)
+
+
 class PtectMainWindow(QMainWindow):
     def __init__(self, data_folder=None):
         super().__init__()
@@ -266,12 +283,14 @@ class PtectMainWindow(QMainWindow):
         self.control = PtectController(data_folder=data_folder)
         self.preview = PtectPreviewWindow(ptect_cont=self.control, parent=self)
         self.run_win = PtectRunWindow(self.control, parent=self)
+        self.data_win = PtectDataWindow(self.control, parent=self)
+        self.er_win = None
         self.preview.show()
 
     def start_ptect(self):
         self.preview.hide()
         self.run_win.show()
-        save_path = get_save_dialog()
+        save_path = get_save_dialog('.npz', '_ptect')
         self.control.save_path = save_path
         self.run_win.thread_pool.spawn_workers(stop_cb=self.stop_ptect)
 
@@ -279,19 +298,100 @@ class PtectMainWindow(QMainWindow):
         self.run_win.hide()
         self.preview.show()
 
+    def no_out(self):
+        self.er_win = PtectWindow(parent=self)
+        data_f = self.control.data_folder
+        text = QLabel()
+        text.setText(f'No output data found in: {data_f}\nUse "Run and Save" to generate _ptect.npz file.\nData folder must contain _ptect.npz file')
+        er_layout = QHBoxLayout()
+        er_layout.addWidget(text)
+        self.er_win.setLayout(er_layout)
+        self.er_win.show()
 
-class PtectRunWindow(QWidget):
+    def show_output(self):
+        data_files = self.control.get_file_list()
+        ptect_npz = data_files['ptect.npz']
+        if ptect_npz is None:
+            self.no_out()
+        else:
+            self.preview.hide()
+            self.data_win.init_plots()
+            self.data_win.show()
+
+    def close_output(self):
+        self.data_win.hide()
+        self.preview.show()
+
+
+class PtectDataWindow(PtectWindow):
     def __init__(self, ptect_cont, parent=None):
-        super().__init__()
-        self.parent = parent
-        self.control = ptect_cont
-        icon_path = os.path.abspath('../resources/ptect_icon.png')
-        self.icon = QIcon(icon_path)
-        self.setWindowIcon(self.icon)
+        super().__init__(ptect_cont, parent)
+        self.resize(640, 480)
+        self.setWindowTitle('Output from: ' + self.control.data_folder)
+        self.grid = QGridLayout(self)
+        self.plot_dict = self.init_plots()
+        self.setLayout(self.grid)
+
+    def init_plots(self):
+        plot_dict = {}
+        data_files = self.control.get_file_list()
+        ptect_npz = data_files['ptect.npz']
+        if ptect_npz is not None:
+            data = self.control.load_output()
+            xy_plot = PlotWidget(self)
+            mark_plot = PlotWidget(self)
+            vel_plot = PlotWidget(self)
+            rast_plot = PlotWidget(self)
+            for p in (xy_plot, mark_plot):
+                ax = p.gca()
+                add_territory_circle(ax, facecolor='w')
+                ax.set_xlim(-32, 32)
+                ax.set_ylim(-32, 32)
+
+            for i, m in enumerate(data):
+                xy_plot.plot(m['x_cm'], m['y_cm'])
+                vel_plot.plot(m['velocity'], color=MOUSE_COLORS_MPL[i], alpha=1/len(data))
+                marks = m['urine_data']
+                mark_plot.plot(marks[marks[:,3] == 0, 1], marks[marks[:,3] == 0, 2], plot_style='scatter',
+                               cmap='grey', c=marks[marks[:,3] == 0, 0], edgecolor='b', alpha=0.5)
+                mark_plot.plot(marks[marks[:, 3] == 1, 1], marks[marks[:, 3] == 1, 2], plot_style='scatter',
+                               cmap='grey', c=marks[marks[:,3] == 1, 0], edgecolor='r', alpha=0.5)
+                h_rast, c_rast = make_mark_raster(marks)
+                rast_plot.plot(h_rast, np.ones_like(h_rast)*i, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
+                               edgecolor='r')
+                rast_plot.plot(c_rast, np.ones_like(c_rast) * i - 0.1, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
+                               edgecolor='b')
+
+                hm_plot = PlotWidget(self)
+                hm_ax = hm_plot.gca()
+                territory_heatmap(m['x_cm'], m['y_cm'], ax=hm_ax)
+                self.grid.addWidget(hm_plot, 1, i, 1, 1)
+
+            rast_plot.gca().set_ylim(-0.25, 1.25)
+            x_ticks = np.arange(len(data)).astype(int)
+            names = np.array(['Mouse0', 'Mouse1'])
+            rast_plot.gca().set_yticks(x_ticks)
+            rast_plot.gca().set_yticklabels(names[x_ticks])
+
+            plot_dict['xy'] = xy_plot
+            plot_dict['marks'] = mark_plot
+            self.grid.addWidget(xy_plot, 0, 0, 1, 1)
+            self.grid.addWidget(mark_plot, 0, 1, 1, 1)
+            self.grid.addWidget(vel_plot, 2, 0, 1, 2)
+            self.grid.addWidget(rast_plot, 3, 0, 1, 2)
+        return plot_dict
+
+    def closeEvent(self, event):
+        self.parent.close_output()
+
+
+class PtectRunWindow(PtectWindow):
+    def __init__(self, ptect_cont, parent=None):
+        super().__init__(ptect_cont, parent)
+
         res = self.screen().size()
         self.setGeometry(int(res.width()/2 - 60), int(res.height()/2 - 210), 420, 120)
         self.setFixedSize(420, 120)
-        self.setWindowIcon(self.icon)
         self.setWindowTitle('Running Ptect...')
 
         finish_i_path = os.path.abspath('../resources/finish_icon.png')
@@ -301,7 +401,7 @@ class PtectRunWindow(QWidget):
 
         self.message = QLabel('Ptecting... On Frame:', self)
         self.message.move(10, 10)
-        self.mouse_i_path = os.path.abspath('../resources/mouse_icon.png')
+        self.mouse_i_path = os.path.abspath('../resources/mouse_icon2.png')
         self.icon_w = QLabel(self)
         self.icon_w.setPixmap(QPixmap(self.mouse_i_path))
         self.icon_w.move(20, 60)
@@ -328,19 +428,15 @@ class PtectRunWindow(QWidget):
         self.message.show()
 
 
-class PtectPreviewWindow(QWidget):
+class PtectPreviewWindow(PtectWindow):
     playing = False
     thresh_controls = []
 
-    def __init__(self, *args, ptect_cont=None, parent=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.app = parent
+    def __init__(self, ptect_cont, parent=None):
+        super().__init__(ptect_cont, parent)
         res = self.screen().size()
         self.resize(int(res.width()*0.8), int(res.height()*0.8))
         self.setWindowTitle('Ptect Preview GUI')
-        icon_path = os.path.abspath('../resources/ptect_icon.png')
-        self.icon = QIcon(icon_path)
-        self.setWindowIcon(self.icon)
 
         self.preview_frame_w = 1960
         self.preview_frame_h = 840
@@ -403,16 +499,22 @@ class PtectPreviewWindow(QWidget):
 
         run_but = QPushButton('Run and Save')
         def run_ptect():
-            self.app.start_ptect()
-
+            self.parent.start_ptect()
         run_but.clicked.connect(run_ptect)
+
+        show_but = QPushButton('Show Output')
+        def show_data():
+            self.parent.show_output()
+        show_but.clicked.connect(show_data)
+
         but_group = QWidget()
         sub_layout = QHBoxLayout()
         sub_layout.addWidget(play)
         sub_layout.addWidget(load_but)
         sub_layout.addWidget(run_but)
+        sub_layout.addWidget(show_but)
         but_group.setLayout(sub_layout)
-        self.layout.addWidget(but_group, 5, 0, 1, 1)
+        self.layout.addWidget(but_group, 5, 0, 1, 2)
 
 
         info_gb = QGroupBox('Run Info')
@@ -540,6 +642,7 @@ class PtectPreviewWindow(QWidget):
         self.vel_plotter.plot([self.control.frame_num, self.control.frame_num], [0, 2], 'k--')
         self.vel_plotter.gca().set_xlim(self.control.frame_num - 400, self.control.frame_num + 400)
 
+
 class SlideInputer(QGroupBox):
     def __init__(self, name, label=None):
         if label is None:
@@ -573,6 +676,7 @@ class SlideInputer(QGroupBox):
 
     def get_value(self):
         return self.id, self.slide.value()
+
 
 class ArenaSelector(QGroupBox):
     size = 0
@@ -690,6 +794,7 @@ class ArenaSelector(QGroupBox):
             a_d = (data[0][0], data[0][1], data[2][0], data[2][1])
         self.update_controls(a_type, data=a_d)
 
+
 class MplCanvas(FigureCanvasQTAgg):
     def __init__(self):
         self.fig = plt.Figure()
@@ -698,10 +803,10 @@ class MplCanvas(FigureCanvasQTAgg):
         FigureCanvasQTAgg.setSizePolicy(self, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         FigureCanvasQTAgg.updateGeometry(self)
 
+
 class PlotWidget(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
-        self.cmap = 'summer'
         self.current_pobj = []
         self.canvas = MplCanvas()
         pyqt_grey = (240/255, 240/255, 240/255)
@@ -730,7 +835,7 @@ class PlotWidget(QWidget):
         my_ax = self.gca()
         if plot_style is not None:
             if plot_style == 'scatter':
-                self.current_pobj.append(my_ax.scatter(args[0], args[1], cmap=self.cmap, **kwargs))
+                self.current_pobj.append(my_ax.scatter(args[0], args[1], *args[2:], **kwargs))
         else:
             self.current_pobj.append(my_ax.plot(*args, **kwargs))
         # self.canvas.draw()
@@ -738,10 +843,10 @@ class PlotWidget(QWidget):
     def draw(self):
         self.canvas.draw()
 
-    def colorbar(self, min_val, max_val, label='', orient='vertical'):
+    def colorbar(self, min_val, max_val, label='', orient='vertical', cmap='summer'):
         norm = matplotlib.colors.Normalize(vmin=min_val, vmax=max_val)
 
-        self.canvas.fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=self.cmap),
+        self.canvas.fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap),
                      ax=self.gca(), orientation=orient, label=label)
 
 
