@@ -125,14 +125,16 @@ class Peetector:
         frame_c = 0
         tot_frames = end_frame - start_frame
         while self.current_frame < end_frame:
+            print(f'Frame {self.current_frame} of {end_frame}')
             p_out = self.peetect_next_frame()[0]
             all_hot_data = np.vstack((all_hot_data, p_out[0]))
             all_cool_data = np.vstack((all_cool_data, p_out[1]))
-            pipe.send((frame_c, tot_frames))
+            if pipe is not None:
+                pipe.send((frame_c, tot_frames))
             frame_c += 1
 
-        hot_half = np.hstack((all_hot_data, np.ones_like(all_hot_data[:, 0])))
-        cool_half = np.hstack((all_cool_data, np.zeros_like(all_cool_data[:, 0])))
+        hot_half = np.hstack((all_hot_data, np.ones_like(all_hot_data[:, 0][:, None])))
+        cool_half = np.hstack((all_cool_data, np.zeros_like(all_cool_data[:, 0][:, None])))
         all_data = np.vstack((hot_half, cool_half))
 
         if save_path is not None:
@@ -466,11 +468,37 @@ class PBuffer:
             true_events = int_evts
         return true_events
 
+
+def urine_across_time(expand_urine, len_s=0, hz=40):
+    urine_over_time = np.empty((0, 2))
+    times = expand_urine[:, 0]
+    if len_s == 0 and len(times) > 0:
+        len_s = np.max(times)
+    if len_s > 0:
+        unique_ts, urine_cnts = np.unique(times, return_counts=True)
+        urine_over_time = np.empty((len(unique_ts), 2))
+        urine_over_time[:, 0] = unique_ts.astype(int)
+        urine_over_time[:, 1] = urine_cnts
+    return urine_over_time
+
+
 def proj_urine_across_time(urine_data, thresh=0):
     all_xys = urine_data[:, 1:]
     unique_xys, cnts = np.unique(all_xys, axis=0, return_counts=True)
     unique_xys = unique_xys[cnts > thresh, :]
     return unique_xys
+
+
+def split_urine_data(urine_data):
+    hot_ind = urine_data[:, 3].astype(bool)
+    return urine_data[hot_ind, :3], urine_data[~hot_ind, :3]
+
+
+def make_mark_raster(urine_data, hot_thresh=0, cool_thresh=0):
+    hot_data, cool_data = split_urine_data(urine_data)
+    hot_rast = urine_across_time(hot_data, hot_thresh)[:, 0]
+    cool_rast = urine_across_time(cool_data, cool_thresh)[:, 1]
+    return hot_rast, cool_rast
 
 
 def urine_segmentation(urine_data, space_dist=1, time_dist=5):
@@ -513,16 +541,6 @@ def get_urine_source(mice_cents, urine_data, urine_seg, look_back_frames=40):
             dists = np.linalg.norm(mice_xys - cent_seg, axis=1)
             urine_ids[inds] = np.argmin(dists)
     return urine_ids
-
-
-def urine_across_time(expand_urine, len_s=0, hz=40):
-    times = expand_urine[:, 0]
-    if len_s == 0:
-        len_s = np.max(times)
-    urine_over_time = np.zeros(int(len_s*hz))
-    unique_ts, urine_cnts = np.unique(times, return_counts=True)
-    urine_over_time[unique_ts.astype(int)] = urine_cnts
-    return urine_over_time
 
 
 def dist_to_urine(x, y, expand_urine, thresh=0):
