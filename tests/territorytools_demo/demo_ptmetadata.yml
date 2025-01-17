@@ -19,7 +19,7 @@ Subject:
   subject_id: Sub
   weight: null
 Territory:
-  arena_data: 197
+  arena_data: 193
   arena_type: circle
   day: 0
   deadzone:
@@ -68,14 +68,14 @@ Territory:
   optical_px_per_cm: 12.63123
   orientation: RNI
   other: Mouse2
-  ptect_cool_thresh: 42
+  ptect_cool_thresh: 40
   ptect_dilate_kern: 5
-  ptect_heat_thresh: 75
+  ptect_heat_thresh: 70
   ptect_smooth_kern: 5
   ptect_time_thresh: 20
   self: Mouse1
   thermal_center:
-  - 329
+  - 332
   - 233
   thermal_hz: 40
   thermal_offset: 0
