@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
 from territorytools.process import process_all_data, valid_dir, find_territory_files
-from territorytools.urine import Peetector, PtectPipe, make_mark_raster
+from territorytools.urine import Peetector, PtectPipe, make_mark_raster, split_urine_data
 from territorytools.ttclasses import MDcontroller
 from territorytools.plotting import add_territory_circle, territory_heatmap
 from territorytools.behavior import get_territory_data
@@ -237,6 +237,7 @@ class RunSignals(QObject):
 class PtectRunner(QRunnable):
     def __init__(self, ptect_cont: PtectController):
         super().__init__()
+
         self.signals = RunSignals()
         self.ptect_cont = ptect_cont
 
@@ -253,10 +254,10 @@ class PtectThread(QThreadPool):
 
     def __init__(self, ptect_cont: PtectController):
         super().__init__()
-        self.ptect_cont = ptect_cont
+        # self.ptect_cont = ptect_cont
 
-    def spawn_workers(self, stop_cb=None):
-        worker = PtectRunner(self.ptect_cont)
+    def spawn_workers(self, ptect_cont, stop_cb=None):
+        worker = PtectRunner(ptect_cont)
         worker.signals.progress.connect(self.emit_worker_output)
         if stop_cb is not None:
             worker.set_stop_cb(stop_cb)
@@ -292,7 +293,7 @@ class PtectMainWindow(QMainWindow):
         self.run_win.show()
         save_path = get_save_dialog('.npz', '_ptect')
         self.control.save_path = save_path
-        self.run_win.thread_pool.spawn_workers(stop_cb=self.stop_ptect)
+        self.run_win.thread_pool.spawn_workers(self.control, stop_cb=self.stop_ptect)
 
     def stop_ptect(self):
         self.run_win.hide()
@@ -352,10 +353,11 @@ class PtectDataWindow(PtectWindow):
                 xy_plot.plot(m['x_cm'], m['y_cm'])
                 vel_plot.plot(m['velocity'], color=MOUSE_COLORS_MPL[i], alpha=1/len(data))
                 marks = m['urine_data']
-                mark_plot.plot(marks[marks[:,3] == 0, 1], marks[marks[:,3] == 0, 2], plot_style='scatter',
-                               cmap='grey', c=marks[marks[:,3] == 0, 0], edgecolor='b', alpha=0.5)
-                mark_plot.plot(marks[marks[:, 3] == 1, 1], marks[marks[:, 3] == 1, 2], plot_style='scatter',
-                               cmap='grey', c=marks[marks[:,3] == 1, 0], edgecolor='r', alpha=0.5)
+                hot_marks, cool_marks = split_urine_data(marks)
+                mark_plot.plot(cool_marks[:10000, 1], cool_marks[:10000, 2], plot_style='scatter',
+                               cmap='grey', c=cool_marks[:10000, 0], edgecolor='b', alpha=0.5)
+                mark_plot.plot(hot_marks[:10000, 1], hot_marks[:10000, 2], plot_style='scatter',
+                               cmap='grey', c=hot_marks[:10000, 0], edgecolor='r', alpha=0.5)
                 h_rast, c_rast = make_mark_raster(marks)
                 rast_plot.plot(h_rast, np.ones_like(h_rast)*i, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
                                edgecolor='r')
@@ -404,28 +406,34 @@ class PtectRunWindow(PtectWindow):
         self.mouse_i_path = os.path.abspath('../resources/mouse_icon.png')
         self.icon_w = QLabel(self)
         self.icon_w.setPixmap(QPixmap(self.mouse_i_path))
-        self.icon_w.move(20, 60)
+        self.icon_w.move(20, 55)
+
+        self.end_x = self.finish_w.pos().x()
 
         self.start = 0
         self.stop = 0
         self.thread_pool = PtectThread(self.control)
+
         self.register_actions()
 
     def register_actions(self):
         self.thread_pool.result.connect(self.update_run)
 
     def update_run(self, s):
-        end_x = self.finish_w.pos().x()
+        print(s)
         frac_done = s[0] / s[1]
-        next_x = int(frac_done*end_x)
+        next_x = int(frac_done*self.end_x)
         orig_p = self.icon_w.pos()
         self.icon_w.move(next_x, orig_p.y())
         self.icon_w.update()
+        #
+        # self.message.clear()
+        # self.message = QLabel(f'Ptecting... On Frame: {s[0]} of {s[1]}', self)
+        # self.message.move(10, 10)
+        # self.message.show()
 
-        self.message.clear()
-        self.message = QLabel(f'Ptecting... On Frame: {s[0]} of {s[1]}', self)
-        self.message.move(10, 10)
-        self.message.show()
+    def closeEvent(self, event):
+        self.parent.stop_ptect()
 
 
 class PtectPreviewWindow(PtectWindow):
@@ -852,9 +860,9 @@ class PlotWidget(QWidget):
 
 class PtectApp:
     def __init__(self, data_folder: str = None):
-        app = QApplication(sys.argv)
-        gui = PtectMainWindow(data_folder=data_folder)
-        sys.exit(app.exec())
+        self.app = QApplication(sys.argv)
+        self.gui = PtectMainWindow(data_folder=data_folder)
+        sys.exit(self.app.exec())
 
 
 if __name__ == '__main__':

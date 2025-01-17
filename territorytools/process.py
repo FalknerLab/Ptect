@@ -145,7 +145,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
     if out_data is None:
         f_parts = os.path.split(folder_name)[-1]
         save_path = os.path.join(folder_name, f_parts + '_output.nwb')
-        make_nwb(mouse_list, md_dict, save_path)
+        # make_nwb(mouse_list, md_dict, save_path)
         # np.save(save_path, mouse_list, allow_pickle=True)
 
     return mouse_list

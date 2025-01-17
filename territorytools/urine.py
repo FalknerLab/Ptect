@@ -125,12 +125,14 @@ class Peetector:
         frame_c = 0
         tot_frames = end_frame - start_frame
         while self.current_frame < end_frame:
-            print(f'Frame {self.current_frame} of {end_frame}')
-            p_out = self.peetect_next_frame()[0]
-            all_hot_data = np.vstack((all_hot_data, p_out[0]))
-            all_cool_data = np.vstack((all_cool_data, p_out[1]))
             if pipe is not None:
                 pipe.send((frame_c, tot_frames))
+
+            p_out = self.peetect_next_frame()[0]
+
+            all_hot_data = np.vstack((all_hot_data, p_out[0]))
+            all_cool_data = np.vstack((all_cool_data, p_out[1]))
+
             frame_c += 1
 
         hot_half = np.hstack((all_hot_data, np.ones_like(all_hot_data[:, 0][:, None])))
