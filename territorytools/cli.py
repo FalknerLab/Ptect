@@ -10,4 +10,4 @@ if __name__ == '__main__':
     parser.add_argument('-gui', action='store_true', help='Pass to enable GUI')
     args = parser.parse_args()
     if args.gui:
-        PtectApp(data_folder=args.datafolder)
+        app = PtectApp(data_folder=args.datafolder)
