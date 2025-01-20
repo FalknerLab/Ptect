@@ -58,9 +58,13 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
     return out_mask
 
 class PtectPipe(ABC):
+    buffer=[]
     @abstractmethod
     def send(self, *args):
         pass
+
+    def read(self):
+        return self.buffer
 
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
@@ -115,6 +119,7 @@ class Peetector:
             self.buffer = PBuffer(self.time_thresh)
 
     def run_ptect(self, pipe: PtectPipe=None, start_frame=0, end_frame=0, save_path=None):
+        self.buffer = PBuffer(self.time_thresh)
         self.set_frame(start_frame)
         if end_frame <= 0:
             end_frame = self.total_frames
@@ -127,6 +132,9 @@ class Peetector:
         while self.current_frame < end_frame:
             if pipe is not None:
                 pipe.send((frame_c, tot_frames))
+                is_done = pipe.read()
+                if is_done:
+                    return None
 
             p_out = self.peetect_next_frame()[0]
 
