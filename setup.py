@@ -13,7 +13,7 @@ setup(
     packages=['territorytools'],
     python_requires=">=3.8",
     install_requires=reqs,
-    entry_points={"console_scripts": ["ptect=territorytools.cli:main",
-                  "ptect-demo=tests.run_demo:main"]},
+    include_package_data=True,
+    entry_points={"console_scripts": ["ptect=territorytools.cli:main",]},
     license_files=("LICENCE",),
     license="BSD-3 Licence")

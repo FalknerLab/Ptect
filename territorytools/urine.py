@@ -494,9 +494,9 @@ def urine_across_time(expand_urine, len_s=0, hz=40):
 
 def proj_urine_across_time(urine_data, thresh=0):
     all_xys = urine_data[:, 1:]
-    unique_xys, cnts = np.unique(all_xys, axis=0, return_counts=True)
+    unique_xys, unique_indices, cnts = np.unique(all_xys, axis=0, return_index=True, return_counts=True)
     unique_xys = unique_xys[cnts > thresh, :]
-    return unique_xys
+    return unique_xys, all_xys[unique_indices, 0]
 
 
 def split_urine_data(urine_data):

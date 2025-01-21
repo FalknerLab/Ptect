@@ -7,10 +7,9 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
-from PyQt5.uic.Compiler.qtproxies import QtCore
 from matplotlib.collections import PathCollection
 from territorytools.process import process_all_data, valid_dir, find_territory_files
-from territorytools.urine import Peetector, PtectPipe, make_mark_raster, split_urine_data
+from territorytools.urine import Peetector, PtectPipe, make_mark_raster, split_urine_data, proj_urine_across_time
 from territorytools.ttclasses import MDcontroller
 from territorytools.plotting import add_territory_circle, territory_heatmap
 from territorytools.behavior import get_territory_data
@@ -373,14 +372,16 @@ class PtectDataWindow(PtectWindow):
                 vel_plot.plot(m['velocity'], color=MOUSE_COLORS_MPL[i], alpha=1/len(data))
                 marks = m['urine_data']
                 hot_marks, cool_marks = split_urine_data(marks)
-                mark_plot.plot(cool_marks[:10000, 1], cool_marks[:10000, 2], plot_style='scatter',
-                               cmap='grey', c=cool_marks[:10000, 0], edgecolor='b', alpha=0.5)
-                mark_plot.plot(hot_marks[:10000, 1], hot_marks[:10000, 2], plot_style='scatter',
-                               cmap='grey', c=hot_marks[:10000, 0], edgecolor='r', alpha=0.5)
-                h_rast, c_rast = make_mark_raster(marks)
-                rast_plot.plot(h_rast, np.ones_like(h_rast)*i, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
+                hot_proj, times_h = proj_urine_across_time(hot_marks)
+                cool_proj, times_c = proj_urine_across_time(cool_marks)
+                mark_plot.plot(cool_proj[:, 0], cool_proj[:, 1], plot_style='scatter',
+                               cmap='grey', c=times_c, edgecolor='b', alpha=0.5)
+                mark_plot.plot(hot_proj[:, 0], hot_proj[:, 1], plot_style='scatter',
+                               cmap='grey', c=times_h, edgecolor='r', alpha=0.5)
+                # h_rast, c_rast = make_mark_raster(marks)
+                rast_plot.plot(times_h, np.ones_like(times_h)*i, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
                                edgecolor='r')
-                rast_plot.plot(c_rast, np.ones_like(c_rast) * i - 0.1, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
+                rast_plot.plot(times_c, np.ones_like(times_c) * i - 0.1, plot_style='scatter', color=MOUSE_COLORS_MPL[i],
                                edgecolor='b')
 
                 hm_plot = PlotWidget(self)
