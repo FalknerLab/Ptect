@@ -649,7 +649,7 @@ class PtectPreviewWindow(PtectWindow):
         if hot_marks is not None:
             self.mark_plotter.clear()
             self.mark_plotter.plot(hot_marks[:, 1], hot_marks[:, 2], s=0.05,
-                                   plot_style='scatter', c=hot_marks[:, 0],
+                                   plot_style='scatter', c=hot_marks[:, 0], cmap='summer',
                                    marker='.', vmin=0, vmax=self.control.get_data('length'))
 
         self.raster_plotter.clear()
