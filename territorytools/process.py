@@ -36,6 +36,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
     ptect_smooth_kern = md_dict['Territory']['ptect_smooth_kern']
     ptect_dilate_kern = md_dict['Territory']['ptect_dilate_kern']
     dz = md_dict['Territory']['deadzone']
+    arena_rad = md_dict['Territory']['arena_data'] / thermal_px_per_cm
 
     out_data = files_dict['output.npy']
 
@@ -97,7 +98,8 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
                             px_per_cm=thermal_px_per_cm,
                             hz=thermal_hz,
                             s_kern=ptect_smooth_kern,
-                            di_kern=ptect_dilate_kern)
+                            di_kern=ptect_dilate_kern,
+                            radius=arena_rad)
         peetect.add_dz(zone=dz)
         f_parts = os.path.split(folder_name)[-1]
         pt_path = os.path.join(folder_name, f_parts + '_ptect.npz')
