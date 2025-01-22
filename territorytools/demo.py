@@ -3,7 +3,7 @@ import os
 from territorytools.gui import PtectApp
 
 
-def get_demo_data(google_drive_link, demo_fold='territorytools_demo'):
+def get_demo_data(google_drive_link, demo_fold='tests/territorytools_demo'):
     abs_path = os.path.abspath(demo_fold)
     if not os.path.exists(abs_path):
         os.mkdir(abs_path)

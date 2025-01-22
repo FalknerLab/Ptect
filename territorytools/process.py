@@ -10,10 +10,10 @@ from territorytools.utils import rotate_xy
 from territorytools.urine import Peetector, urine_segmentation
 
 
-def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=True):
+def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=True, out_path=None, verbose=True):
 
     if valid_dir(run_folder_root):
-        print(run_folder_root)
+        print(f'Loading territory data from folder: {run_folder_root}')
     else:
         print(f'{run_folder_root} does not contain all territory dataset files (ptmetadata.yml, top.mp4, top.h5, thermal.mp4, thermal.h5)')
         return None
@@ -88,6 +88,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
         urine_data = ptect['urine_data']
 
     if ptect_data is None and not skip_ptect:
+        print('Running Ptect...')
         peetect = Peetector(files_dict['thermal.avi'], therm,
                             hot_thresh=urine_heat_thresh,
                             cold_thresh=urine_cool_thresh,
@@ -98,12 +99,9 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
                             s_kern=ptect_smooth_kern,
                             di_kern=ptect_dilate_kern)
         peetect.add_dz(zone=dz)
-        peetect.run_ptect(save_path='test.npz')
-        # f_parts = os.path.split(folder_name)[-1]
-        # pt_vid_path = os.path.join(folder_name, f_parts + '_ptvid.mp4')
-        # urine_data = peetect.peetect_frames(save_vid=pt_vid_path,
-        #                                     show_vid=show_all,
-        #                                     start_frame=int(start_t_sec*thermal_hz))
+        f_parts = os.path.split(folder_name)[-1]
+        pt_path = os.path.join(folder_name, f_parts + '_ptect.npz')
+        peetect.run_ptect(save_path=pt_path, verbose=verbose)
     if len(urine_data) > 0:
         # urine_seg = urine_segmentation(urine_data)
         urine_seg = []
@@ -143,10 +141,11 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
         mouse_list.append(out_dict)
 
     if out_data is None:
-        f_parts = os.path.split(folder_name)[-1]
-        save_path = os.path.join(folder_name, f_parts + '_output.nwb')
+        if out_path is None:
+            f_parts = os.path.split(folder_name)[-1]
+            out_path = os.path.join(folder_name, f_parts + '_output.npy')
         # make_nwb(mouse_list, md_dict, save_path)
-        # np.save(save_path, mouse_list, allow_pickle=True)
+        np.save(out_path, mouse_list, allow_pickle=True)
 
     return mouse_list
 

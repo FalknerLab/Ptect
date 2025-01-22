@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
 from territorytools.process import process_all_data, valid_dir, find_territory_files
-from territorytools.urine import Peetector, PtectPipe, make_mark_raster, split_urine_data, proj_urine_across_time
+from territorytools.urine import Peetector, PtectPipe, split_urine_data, proj_urine_across_time
 from territorytools.ttclasses import MDcontroller
 from territorytools.plotting import add_territory_circle, territory_heatmap
 from territorytools.behavior import get_territory_data
@@ -181,6 +181,7 @@ class PtectController:
                 self.metadata.set_key_val('Territory/ptect_time_thresh', value)
             case 'deadzone':
                 if type(value) == list:
+                    print(value)
                     self.ptect.add_dz(zone=value)
                 else:
                     pts = self.ptect.add_dz(num_pts=int(value))

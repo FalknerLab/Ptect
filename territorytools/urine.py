@@ -1,3 +1,4 @@
+import time
 from abc import abstractmethod, ABC
 from types import NoneType
 import cv2
@@ -118,7 +119,7 @@ class Peetector:
             self.time_thresh = check_frames
             self.buffer = PBuffer(self.time_thresh)
 
-    def run_ptect(self, pipe: PtectPipe=None, start_frame=0, end_frame=0, save_path=None):
+    def run_ptect(self, pipe: PtectPipe=None, start_frame=0, end_frame=0, save_path=None, verbose=False):
         self.buffer = PBuffer(self.time_thresh)
         self.set_frame(start_frame)
         if end_frame <= 0:
@@ -129,7 +130,11 @@ class Peetector:
 
         frame_c = 0
         tot_frames = end_frame - start_frame
+        # t0 = time.time()
         while self.current_frame < end_frame:
+            if verbose and frame_c % 1000 == 0:
+                print(f'Running Ptect on frame {frame_c} of {tot_frames}...')
+
             if pipe is not None:
                 pipe.send((frame_c, tot_frames))
                 is_done = pipe.read()
@@ -142,6 +147,9 @@ class Peetector:
             all_cool_data = np.vstack((all_cool_data, p_out[1]))
 
             frame_c += 1
+            # t1 = time.time()
+            # print(t1-t0)
+            # t0 = t1
 
         hot_half = np.hstack((all_hot_data, np.ones_like(all_hot_data[:, 0][:, None])))
         cool_half = np.hstack((all_cool_data, np.zeros_like(all_cool_data[:, 0][:, None])))
