@@ -8,6 +8,24 @@ from territorytools.urine import urine_across_time
 
 
 def add_territory_circle(ax, block=None, rad=30.48, facecolor=None):
+    """
+    Adds a territory circle to the given axis.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axis to add the circle to.
+    block : str, optional
+        Block type to add specific lines (default is None).
+    rad : float, optional
+        Radius of the circle in centimeters (default is 30.48).
+    facecolor : tuple, optional
+        Face color of the circle (default is None).
+
+    Returns
+    -------
+    None
+    """
     if facecolor is None:
         facecolor = (0.9, 0.9, 0.9)
     circ = Circle((0, 0), radius=rad, facecolor=facecolor, edgecolor=(0.2, 0.2, 0.2), linestyle='--')
@@ -23,6 +41,22 @@ def add_territory_circle(ax, block=None, rad=30.48, facecolor=None):
 
 
 def plot_run(run_data, md, ax=None):
+    """
+    Plots the run data on the given axis.
+
+    Parameters
+    ----------
+    run_data : list of dict
+        List of dictionaries containing run data for each mouse.
+    md : dict
+        Metadata associated with the run.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on (default is None).
+
+    Returns
+    -------
+    None
+    """
     if ax is None:
         ax = plt.gca()
     cols = ['tab:blue', 'tab:orange']
@@ -50,6 +84,24 @@ def plot_run(run_data, md, ax=None):
 
 
 def plot_cdfs(group_id, group_data, group_info, ax_list):
+    """
+    Plots the cumulative distribution functions (CDFs) for the given group data.
+
+    Parameters
+    ----------
+    group_id : any
+        Identifier for the group.
+    group_data : list of list of dict
+        List of lists containing data for each group.
+    group_info : list of dict
+        List of dictionaries containing metadata for each group.
+    ax_list : list of matplotlib.axes.Axes
+        List of axes to plot on.
+
+    Returns
+    -------
+    None
+    """
     def calc_cdf(data):
         return np.cumsum(data) / np.sum(data)
 
@@ -64,6 +116,20 @@ def plot_cdfs(group_id, group_data, group_info, ax_list):
 
 
 def urine_prob_dep(run_data, run_info):
+    """
+    Plots the probability of urination depending on the distance between mice.
+
+    Parameters
+    ----------
+    run_data : list of dict
+        List of dictionaries containing run data for each mouse.
+    run_info : dict
+        Metadata associated with the run.
+
+    Returns
+    -------
+    None
+    """
     x_fix = [1, -1]
     o_ind = [1, 0]
     f, axs = plt.subplots(2, 1)
@@ -99,6 +165,20 @@ def urine_prob_dep(run_data, run_info):
 
 
 def show_urine_segmented(expand_urine, labels):
+    """
+    Shows a 3D scatter plot of segmented urine data.
+
+    Parameters
+    ----------
+    expand_urine : numpy.ndarray
+        Array of urine data points.
+    labels : numpy.ndarray
+        Array of labels for the urine data points.
+
+    Returns
+    -------
+    None
+    """
     e = [20, 0]
     a = [-45, 0]
     for i in range(2):
@@ -117,6 +197,22 @@ def show_urine_segmented(expand_urine, labels):
 
 
 def show_urine_segmented_video(expand_urine, labels, window=300):
+    """
+    Shows a 3D scatter plot animation of segmented urine data over time.
+
+    Parameters
+    ----------
+    expand_urine : numpy.ndarray
+        Array of urine data points.
+    labels : numpy.ndarray
+        Array of labels for the urine data points.
+    window : int, optional
+        Window size for the animation (default is 300).
+
+    Returns
+    -------
+    None
+    """
     num_f = int(max(expand_urine[:, 0])) + window
     f = plt.figure()
     ax = f.add_subplot(projection='3d')
@@ -141,6 +237,24 @@ def show_urine_segmented_video(expand_urine, labels, window=300):
 
 
 def circle_hist(x, y, bins=36, ax=None):
+    """
+    Plots a circular histogram of the given data.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    bins : int, optional
+        Number of bins for the histogram (default is 36).
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on (default is None).
+
+    Returns
+    -------
+    None
+    """
     if ax is None:
         ax = plt.subplot(projection='polar')
 
@@ -165,6 +279,26 @@ def circle_hist(x, y, bins=36, ax=None):
 
 
 def motion_flow_field(x, y, ax=None, future_frames=40, bin_s=50):
+    """
+    Plots a motion flow field of the given data.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on (default is None).
+    future_frames : int, optional
+        Number of future frames to consider (default is 40).
+    bin_s : int, optional
+        Bin size for the histogram (default is 50).
+
+    Returns
+    -------
+    None
+    """
     if ax is None:
         f, ax = plt.subplots(1, 1)
 
@@ -185,6 +319,24 @@ def motion_flow_field(x, y, ax=None, future_frames=40, bin_s=50):
 
 
 def plot_mean_sem(data_mat: np.ndarray, ax=None, col='r', x=None):
+    """
+    Plots the mean and standard error of the mean (SEM) of the given data.
+
+    Parameters
+    ----------
+    data_mat : numpy.ndarray
+        Data matrix.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on (default is None).
+    col : str, optional
+        Color of the plot (default is 'r').
+    x : numpy.ndarray, optional
+        X coordinates (default is None).
+
+    Returns
+    -------
+    None
+    """
     if ax is None:
         ax = plt.gca()
 
@@ -206,7 +358,37 @@ def plot_mean_sem(data_mat: np.ndarray, ax=None, col='r', x=None):
 
 
 def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False, limits=((-32, 32), (-32, 32)), density=True, aspect='auto'):
+    """
+    Plots a heatmap of the given territory data.
 
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on (default is None).
+    bins : int, optional
+        Number of bins for the histogram (default is 16).
+    vmin : float, optional
+        Minimum value for the color scale (default is 0).
+    vmax : float, optional
+        Maximum value for the color scale (default is 200).
+    colorbar : bool, optional
+        Whether to show a colorbar (default is False).
+    limits : tuple of tuple, optional
+        Limits for the histogram (default is ((-32, 32), (-32, 32))).
+    density : bool, optional
+        Whether to normalize the histogram (default is True).
+    aspect : str, optional
+        Aspect ratio for the plot (default is 'auto').
+
+    Returns
+    -------
+    numpy.ndarray
+        Heatmap data.
+    """
     im = np.histogram2d(x, y, bins=bins, range=limits)[0].T
 
     if density:
@@ -224,6 +406,22 @@ def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False, 
 
 
 def draw_pvals(ax, pvals, x_pts):
+    """
+    Draws p-values on the given axis.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axis to draw on.
+    pvals : list of float
+        List of p-values.
+    x_pts : list of tuple
+        List of x-coordinate pairs for the p-values.
+
+    Returns
+    -------
+    None
+    """
     start_y = ax.get_ylim()[1] * 1.01
     for p, x in zip(pvals, x_pts):
         if p < 0.05:

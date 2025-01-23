@@ -9,6 +9,31 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def get_territory_data(sleap_pts, rot_offset=0, px_per_cm=350/30.48, ref_point=(638, 504), hz=40, trunk_ind=5, head_ind=0):
+    """
+    Extracts and processes territory data from SLEAP points.
+
+    Parameters
+    ----------
+    sleap_pts : numpy.ndarray
+        Array of SLEAP points.
+    rot_offset : float, optional
+        Rotation offset in degrees (default is 0).
+    px_per_cm : float, optional
+        Pixels per centimeter (default is 350/30.48).
+    ref_point : tuple, optional
+        Reference point for centering (default is (638, 504)).
+    hz : int, optional
+        Sampling frequency in Hz (default is 40).
+    trunk_ind : int, optional
+        Index of the trunk point (default is 5).
+    head_ind : int, optional
+        Index of the head point (default is 0).
+
+    Returns
+    -------
+    tuple
+        Processed territory data including cent_x, cent_y, head_angles, dist_vec, and slp_rot.
+    """
     slp_cm = xy_to_cm_vec(sleap_pts, center_pt=ref_point, px_per_cm=px_per_cm)
     slp_rot = rotate_xy_vec(slp_cm, rot_offset)
     head_angles = get_head_direction(slp_rot, trunk_ind=trunk_ind, head_ind=head_ind)
@@ -22,6 +47,27 @@ def get_territory_data(sleap_pts, rot_offset=0, px_per_cm=350/30.48, ref_point=(
 
 
 def get_diadic_behavior(sub_x, sub_y, sub_heading, stim_x, stim_y):
+    """
+    Computes diadic behavior metrics between two subjects.
+
+    Parameters
+    ----------
+    sub_x : numpy.ndarray
+        X coordinates of the subject.
+    sub_y : numpy.ndarray
+        Y coordinates of the subject.
+    sub_heading : numpy.ndarray
+        Heading angles of the subject.
+    stim_x : numpy.ndarray
+        X coordinates of the stimulus.
+    stim_y : numpy.ndarray
+        Y coordinates of the stimulus.
+
+    Returns
+    -------
+    tuple
+        Distance between mice and relative angle of the subject to the stimulus.
+    """
     sub_xy = np.vstack((sub_x, sub_y)).T
     stim_xy = np.vstack((stim_x, stim_y)).T
     stim_rel_xy = stim_xy - sub_xy
@@ -32,6 +78,25 @@ def get_diadic_behavior(sub_x, sub_y, sub_heading, stim_x, stim_y):
 
 
 def get_head_direction(mouse_data, in_deg=False, trunk_ind=5, head_ind=0): #originally 4, 1
+    """
+    Computes the head direction of the mouse.
+
+    Parameters
+    ----------
+    mouse_data : numpy.ndarray
+        Array of mouse data points.
+    in_deg : bool, optional
+        Whether to return angles in degrees (default is False).
+    trunk_ind : int, optional
+        Index of the trunk point (default is 5).
+    head_ind : int, optional
+        Index of the head point (default is 0).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of head direction angles.
+    """
     md_copy = np.copy(mouse_data)
     md_copy[1, :, :] = -md_copy[1, :, :]
     xy_nose = md_copy[:, head_ind, :] - md_copy[:, trunk_ind, :]
@@ -42,6 +107,23 @@ def get_head_direction(mouse_data, in_deg=False, trunk_ind=5, head_ind=0): #orig
 
 
 def compute_preferences(x, y, walls=None):
+    """
+    Computes territory preferences based on position data.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    walls : list of float, optional
+        List of wall angles (default is None).
+
+    Returns
+    -------
+    tuple
+        Preferences and territory IDs per sample in time.
+    """
     ter_id = xy_to_territory(x, y, walls=walls)
     ter, ter_cnts = np.unique(ter_id, return_counts=True)
     prefs = np.zeros(3)
@@ -50,6 +132,23 @@ def compute_preferences(x, y, walls=None):
 
 
 def prefs_across_time(x, y, samp_win=5400):
+    """
+    Computes preferences across time.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    samp_win : int, optional
+        Sampling window size (default is 5400).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of preferences across time.
+    """
     pref_acc = []
     for i in range(len(x)-samp_win):
         pref_acc.append(compute_preferences(x[i:i+samp_win], y[i:i+samp_win])[0])
@@ -57,6 +156,23 @@ def prefs_across_time(x, y, samp_win=5400):
 
 
 def vel_across_time(vel, ter_id, samp_win=5400):
+    """
+    Computes velocity across time for different territories.
+
+    Parameters
+    ----------
+    vel : numpy.ndarray
+        Velocity data.
+    ter_id : numpy.ndarray
+        Territory IDs.
+    samp_win : int, optional
+        Sampling window size (default is 5400).
+
+    Returns
+    -------
+    tuple
+        Mean velocities for self, other, and novel territories.
+    """
     mean_vel_self = []
     mean_vel_other = []
     mean_vel_novel = []
@@ -69,6 +185,23 @@ def vel_across_time(vel, ter_id, samp_win=5400):
 
 
 def xy_to_territory(x, y, walls=None):
+    """
+    Converts XY coordinates to territory IDs.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    walls : list of float, optional
+        List of wall angles (default is None).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of territory IDs.
+    """
     if walls is None:
         walls = [-np.pi / 2, 5 * np.pi / 6, np.pi / 6]
     t = np.arctan2(y, x)
@@ -80,6 +213,19 @@ def xy_to_territory(x, y, walls=None):
 
 
 def interp_behavs(*args):
+    """
+    Interpolates behavior data to fill NaN values.
+
+    Parameters
+    ----------
+    *args : tuple
+        Behavior data arrays.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        List of interpolated behavior data arrays.
+    """
     out_behavs = []
     for b in args:
         interp_b = b.copy()
@@ -91,13 +237,40 @@ def interp_behavs(*args):
 
 
 def avg_angs(head_angs):
-    #Get average angle of head direction dataset
+    """
+    Computes the average angle of head direction data.
+
+    Parameters
+    ----------
+    head_angs : numpy.ndarray
+        Array of head direction angles.
+
+    Returns
+    -------
+    float
+        Average angle.
+    """
     avg_s = np.nanmean(np.sin(head_angs))
     avg_c = np.nanmean(np.cos(head_angs))
     return np.arctan2(avg_s, avg_c)
 
 
 def xy_to_polar(x, y):
+    """
+    Converts XY coordinates to polar coordinates.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+
+    Returns
+    -------
+    tuple
+        Polar coordinates (theta, radius).
+    """
     t = np.arctan2(y, x)
     xy = np.vstack((x[:, None], y[:, None])).T
     r = np.linalg.norm(xy, axis=1)
@@ -105,6 +278,29 @@ def xy_to_polar(x, y):
 
 
 def compute_over_spatial_bin(xpos, ypos, data, func, bins=20, range=None):
+    """
+    Computes a function over spatial bins.
+
+    Parameters
+    ----------
+    xpos : numpy.ndarray
+        X positions.
+    ypos : numpy.ndarray
+        Y positions.
+    data : numpy.ndarray
+        Data to compute over.
+    func : callable
+        Function to apply to each bin.
+    bins : int, optional
+        Number of bins (default is 20).
+    range : list of list of float, optional
+        Range for the bins (default is None).
+
+    Returns
+    -------
+    tuple
+        Histogram of computed values, x edges, and y edges.
+    """
     if range is None:
         range = [[-32, 32], [-32, 32]]
     _, xedges, yedges = np.histogram2d(xpos, ypos, bins=bins, range=range)
@@ -119,6 +315,23 @@ def compute_over_spatial_bin(xpos, ypos, data, func, bins=20, range=None):
 
 
 def make_design_matrix(run_data, md, norm=None):
+    """
+    Creates a design matrix from run data.
+
+    Parameters
+    ----------
+    run_data : list of dict
+        List of dictionaries containing run data for each mouse.
+    md : dict
+        Metadata associated with the run.
+    norm : str, optional
+        Normalization method (default is None).
+
+    Returns
+    -------
+    numpy.ndarray
+        Design matrix.
+    """
     dist_btw_mice, looking_ang = [], []
     if md['Territory']['block'] == '0':
         dist_btw_mice, looking_ang = get_diadic_behavior(run_data[0]['x_cm'], run_data[0]['y_cm'], run_data[0]['angle'],
@@ -153,6 +366,27 @@ def make_design_matrix(run_data, md, norm=None):
 
 
 def prob_over_x(x_data, binary_data, bin_min, bin_max, bin_num=20):
+    """
+    Computes probabilities over X data.
+
+    Parameters
+    ----------
+    x_data : numpy.ndarray
+        X data.
+    binary_data : numpy.ndarray
+        Binary data.
+    bin_min : float
+        Minimum bin value.
+    bin_max : float
+        Maximum bin value.
+    bin_num : int, optional
+        Number of bins (default is 20).
+
+    Returns
+    -------
+    tuple
+        Probabilities, prior probabilities, and bin left edges.
+    """
     bins = np.linspace(bin_min, bin_max, bin_num)
     tot_binary = np.sum(binary_data)
     probs = []
@@ -168,6 +402,27 @@ def prob_over_x(x_data, binary_data, bin_min, bin_max, bin_num=20):
 
 
 def time_near_walls(x_pos, y_pos, wall_angs, dist_thresh=2, rad=30.48):
+    """
+    Computes the time spent near walls.
+
+    Parameters
+    ----------
+    x_pos : numpy.ndarray
+        X positions.
+    y_pos : numpy.ndarray
+        Y positions.
+    wall_angs : list of float
+        List of wall angles.
+    dist_thresh : float, optional
+        Distance threshold (default is 2).
+    rad : float, optional
+        Radius of the arena (default is 30.48).
+
+    Returns
+    -------
+    tuple
+        Percentages and in-zone flags.
+    """
     percents = []
     in_zone = []
     for a in wall_angs:
@@ -178,6 +433,27 @@ def time_near_walls(x_pos, y_pos, wall_angs, dist_thresh=2, rad=30.48):
 
 
 def dist_to_wall(x, y, wall_deg, rad=30.48, num_pts=1000):
+    """
+    Computes the distance to a wall.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    wall_deg : float
+        Wall angle in degrees.
+    rad : float, optional
+        Radius of the arena (default is 30.48).
+    num_pts : int, optional
+        Number of points to sample along the wall (default is 1000).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of distances to the wall.
+    """
     xy_data = np.vstack((x, y)).T
     dist_acc = []
     wall_xs = np.linspace(0, rad * np.sin(np.radians(wall_deg)), num_pts)

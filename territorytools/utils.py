@@ -4,6 +4,20 @@ import numpy as np
 
 
 def find_rename_cam_videos(root_dir, cam_dict=None):
+    """
+    Finds and renames camera video files based on a given dictionary.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory to search.
+    cam_dict : dict, optional
+        Dictionary mapping folder suffixes to new names (default is None).
+
+    Returns
+    -------
+    None
+    """
     if cam_dict is None:
         cam_dict = {'19060809': 'side1',
                     '19194088': 'side3',
@@ -27,6 +41,31 @@ def find_rename_cam_videos(root_dir, cam_dict=None):
 
 
 def fix_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='fixed', dist_thresh=25, chunk_sz=16384):
+    """
+    Fixes the SLEAP H5 file by updating tracking scores, instance scores, point scores, track occupancy, and tracks.
+
+    Parameters
+    ----------
+    slp_h5 : str
+        Path to the SLEAP H5 file.
+    block : int, optional
+        Block number to process (default is 1).
+    orientation : int or str, optional
+        Orientation of the data (default is 0).
+    cent_xy : tuple, optional
+        Center coordinates (x, y) (default is (638, 504)).
+    suff : str, optional
+        Suffix for the new file name (default is 'fixed').
+    dist_thresh : int, optional
+        Distance threshold for filtering (default is 25).
+    chunk_sz : int, optional
+        Chunk size for processing (default is 16384).
+
+    Returns
+    -------
+    str
+        Path to the new fixed H5 file.
+    """
     rot_dict = {'rni': 0,
                 'none': 0,
                 'irn': 120,
@@ -145,6 +184,25 @@ def fix_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='
 
 
 def xy_to_cm(xy, center_pt=(325, 210), px_per_cm=225/30.48):
+    """
+    Converts pixel coordinates to centimeters.
+
+    Parameters
+    ----------
+    xy : numpy.ndarray
+        Array of pixel coordinates.
+    center_pt : tuple, optional
+        Center point for conversion (default is (325, 210)).
+    px_per_cm : float, optional
+        Pixels per centimeter (default is 225/30.48).
+
+    Returns
+    -------
+    cm_x : numpy.ndarray
+        X coordinates in centimeters.
+    cm_y : numpy.ndarray
+        Y coordinates in centimeters.
+    """
     rel_xy = xy - center_pt
     rel_xy[:, 1] = -rel_xy[:, 1]
     cm_x = rel_xy[:, 0] / px_per_cm
@@ -153,6 +211,23 @@ def xy_to_cm(xy, center_pt=(325, 210), px_per_cm=225/30.48):
 
 
 def xy_to_cm_vec(xys, center_pt=(325, 210), px_per_cm=225/30.48):
+    """
+    Converts a vector of pixel coordinates to centimeters.
+
+    Parameters
+    ----------
+    xys : numpy.ndarray
+        Array of pixel coordinates.
+    center_pt : tuple, optional
+        Center point for conversion (default is (325, 210)).
+    px_per_cm : float, optional
+        Pixels per centimeter (default is 225/30.48).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of coordinates in centimeters.
+    """
     xys_rot = []
     for i in range(xys.shape[-1]):
         this_xy = xys[:, :, i].T
@@ -163,6 +238,21 @@ def xy_to_cm_vec(xys, center_pt=(325, 210), px_per_cm=225/30.48):
 
 
 def rotate_xy_vec(pts, rot_ang):
+    """
+    Rotates a vector of coordinates by a given angle.
+
+    Parameters
+    ----------
+    pts : numpy.ndarray
+        Array of coordinates to rotate.
+    rot_ang : float
+        Rotation angle in degrees.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of rotated coordinates.
+    """
     out_pts = []
     for i in range(pts.shape[-1]):
         rot_pts = rotate_xy(pts[0, :, i], pts[1, :, i], rot_ang)
@@ -172,6 +262,23 @@ def rotate_xy_vec(pts, rot_ang):
 
 
 def rotate_xy(x, y, rot):
+    """
+    Rotates coordinates by a given angle.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    rot : float or str
+        Rotation angle in degrees or a string key for predefined angles.
+
+    Returns
+    -------
+    tuple
+        Rotated X and Y coordinates.
+    """
     rot_dict = {'rni': 0,
                 'none': 0,
                 'irn': 120,
@@ -189,7 +296,25 @@ def rotate_xy(x, y, rot):
     xy = rot_mat @ np.vstack((x, y))
     return xy[0, :], xy[1, :]
 
+
 def intersect2d(arr0, arr1, return_int=True):
+    """
+    Finds the intersection of two 2D arrays.
+
+    Parameters
+    ----------
+    arr0 : numpy.ndarray
+        First array.
+    arr1 : numpy.ndarray
+        Second array.
+    return_int : bool, optional
+        Whether to return the intersection (default is True).
+
+    Returns
+    -------
+    numpy.ndarray or tuple
+        Intersection of the arrays or the non-intersecting elements and a boolean array.
+    """
     cool_evts_1d = list([''.join(str(row)) for row in arr0])
     te_1d = list([''.join(str(row)) for row in arr1])
     valid_int, te_inds, ce_inds = np.intersect1d(te_1d, cool_evts_1d, return_indices=True)
@@ -200,7 +325,22 @@ def intersect2d(arr0, arr1, return_int=True):
         bool_arr[te_inds] = False
         return arr1[bool_arr, :], bool_arr
 
+
 def find_rename_cam_folders(root_dir, cam_dict=None):
+    """
+    Finds and renames camera folders based on a given dictionary.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory to search.
+    cam_dict : dict, optional
+        Dictionary mapping folder suffixes to new names (default is None).
+
+    Returns
+    -------
+    None
+    """
     if cam_dict is None:
         cam_dict = {'19060809': 'side1',
                     '19194088': 'side3',
@@ -218,6 +358,7 @@ def find_rename_cam_folders(root_dir, cam_dict=None):
                 os.rename(next_dir, os.path.join(root_dir, cam_dict[f_suf[-1]]))
         if os.path.isdir(next_dir):
             find_rename_cam_folders(next_dir, cam_dict=cam_dict)
+
 
 if __name__ == '__main__':
     # root_dir = 'D:/ptect_dataset/testing/kpms'

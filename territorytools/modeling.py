@@ -7,6 +7,31 @@ from sklearn.model_selection import train_test_split
 
 def train_test_model(design_mat: np.ndarray, output_mat: np.ndarray,
             model: sklearn.linear_model = TweedieRegressor(power=1, alpha=0.5, link='log')):
+    """
+    Trains and tests a model using the given design and output matrices.
+
+    Parameters
+    ----------
+    design_mat : np.ndarray
+        Design matrix (input features).
+    output_mat : np.ndarray
+        Output matrix (target values).
+    model : sklearn.linear_model, optional
+        Model to train (default is TweedieRegressor(power=1, alpha=0.5, link='log')).
+
+    Returns
+    -------
+    y_test : np.ndarray
+        Test target values.
+    pred : np.ndarray
+        Predicted values for the test set.
+    full_pred : np.ndarray
+        Predicted values for the entire dataset.
+    r2 : float
+        R-squared score of the model.
+    model : sklearn.linear_model
+        Trained model.
+    """
     output = output_mat
     if design_mat.ndim < 2:
         design_mat = np.expand_dims(design_mat, axis=1)
@@ -32,6 +57,27 @@ def train_test_model(design_mat: np.ndarray, output_mat: np.ndarray,
 
 
 def chunk_shuffle(data, chunk_size, rand_seed=42, num_shuffs=1, verbose=False):
+    """
+    Shuffles data in chunks.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to shuffle.
+    chunk_size : int
+        Size of each chunk.
+    rand_seed : int, optional
+        Random seed for reproducibility (default is 42).
+    num_shuffs : int, optional
+        Number of shuffles to perform (default is 1).
+    verbose : bool, optional
+        Whether to print verbose output (default is False).
+
+    Returns
+    -------
+    np.ndarray
+        Array of shuffled data.
+    """
     data_sz = len(data)
     bin_ar = np.digitize(np.arange(data_sz), bins=np.arange(data_sz, step=chunk_size))
     bin_ids = np.unique(bin_ar)

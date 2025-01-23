@@ -11,7 +11,29 @@ from territorytools.urine import Peetector, urine_segmentation
 
 
 def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=True, out_path=None, verbose=True):
+    """
+    Processes all data in the given run folder.
 
+    Parameters
+    ----------
+    run_folder_root : str
+        Root directory of the run folder.
+    show_all : bool, optional
+        Whether to show all data (default is False).
+    start_t_sec : int, optional
+        Start time in seconds (default is 0).
+    skip_ptect : bool, optional
+        Whether to skip Ptect processing (default is True).
+    out_path : str, optional
+        Output path for the processed data (default is None).
+    verbose : bool, optional
+        Whether to print verbose output (default is True).
+
+    Returns
+    -------
+    list
+        List of dictionaries containing processed data for each mouse.
+    """
     if valid_dir(run_folder_root):
         print(f'Loading territory data from folder: {run_folder_root}')
     else:
@@ -153,6 +175,22 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
 
 
 def make_nwb(data, metadata, file_name):
+    """
+    Creates an NWB file from the given data and metadata.
+
+    Parameters
+    ----------
+    data : list
+        List of dictionaries containing data for each mouse.
+    metadata : dict
+        Dictionary containing metadata.
+    file_name : str
+        Name of the NWB file to create.
+
+    Returns
+    -------
+    None
+    """
     sess_desc= ''
     id = 0
     start_time = 0
@@ -176,6 +214,19 @@ def make_nwb(data, metadata, file_name):
 
 
 def find_territory_files(root_dir: str):
+    """
+    Finds all territory files in the given root directory.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory to search.
+
+    Returns
+    -------
+    dict
+        Dictionary containing paths to the found files.
+    """
     target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5', 'ptmetadata.yml', 'fixedtop.h5', 'ptect.npz', 'output.npy']
     out_paths = {s: None for s in target_sufs}
     out_paths['root'] = root_dir
@@ -187,6 +238,19 @@ def find_territory_files(root_dir: str):
 
 
 def valid_dir(root_dir: str):
+    """
+    Checks if the given directory contains all required territory dataset files.
+
+    Parameters
+    ----------
+    root_dir : str
+        Directory to check.
+
+    Returns
+    -------
+    bool
+        True if the directory contains all required files, False otherwise.
+    """
     target_sufs = ['thermal.avi', 'thermal.h5', 'top.mp4', 'top.h5']
     contains_f = np.zeros(len(target_sufs)).astype(bool)
     for ind, t in enumerate(target_sufs):
@@ -196,6 +260,21 @@ def valid_dir(root_dir: str):
 
 
 def find_file_recur(root_fold, target_suf):
+    """
+    Recursively finds a file with the given suffix in the root folder.
+
+    Parameters
+    ----------
+    root_fold : str
+        Root folder to search.
+    target_suf : str
+        Suffix of the target file.
+
+    Returns
+    -------
+    str or None
+        Path to the found file, or None if not found.
+    """
     files = os.listdir(root_fold)
     found_file = None
     for f in files:
@@ -210,6 +289,18 @@ def find_file_recur(root_fold, target_suf):
 
 
 def convert_npy_h5(npy_path):
+    """
+    Converts a .npy file to a .h5 file.
+
+    Parameters
+    ----------
+    npy_path : str
+        Path to the .npy file.
+
+    Returns
+    -------
+    None
+    """
     path_parts = os.path.split(npy_path)
     new_file = path_parts[1].split('.')[0] + '_output.h5'
     out_h5 = os.path.join(path_parts[0], new_file)
@@ -224,6 +315,29 @@ def convert_npy_h5(npy_path):
 
 
 def clean_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff='fixed', num_mice=1):
+    """
+    Cleans a SLEAP H5 file by updating tracking scores, instance scores, point scores, track occupancy, and tracks.
+
+    Parameters
+    ----------
+    slp_h5 : str
+        Path to the SLEAP H5 file.
+    block : int, optional
+        Block number to process (default is 1).
+    orientation : int or str, optional
+        Orientation of the data (default is 0).
+    cent_xy : tuple, optional
+        Center coordinates (x, y) (default is (638, 504)).
+    suff : str, optional
+        Suffix for the new file name (default is 'fixed').
+    num_mice : int, optional
+        Number of mice (default is 1).
+
+    Returns
+    -------
+    str
+        Path to the new cleaned H5 file.
+    """
     rot_dict = {'rni': 0,
                 'none': 0,
                 'irn': 120,
@@ -324,6 +438,18 @@ def clean_sleap_h5(slp_h5: str, block=1, orientation=0, cent_xy=(638, 504), suff
 
 
 def package_data(root_dir):
+    """
+    Packages data by moving files into their respective directories.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory containing the data files.
+
+    Returns
+    -------
+    None
+    """
     files = os.listdir(root_dir)
     for f in files:
         f_parts_u = f.split('_')
@@ -334,6 +460,24 @@ def package_data(root_dir):
 
 
 def make_nwb_yamls(root_dir, key_fmt, key_del='_', val_del='_'):
+    """
+    Creates NWB YAML files for each subdirectory in the root directory.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory containing the subdirectories.
+    key_fmt : str
+        Format string for the keys.
+    key_del : str, optional
+        Delimiter for the keys (default is '_').
+    val_del : str, optional
+        Delimiter for the values (default is '_').
+
+    Returns
+    -------
+    None
+    """
     for f in os.listdir(root_dir):
         merge_dict = {}
         if os.path.isdir(os.path.join(root_dir, f)):
@@ -356,6 +500,25 @@ def make_nwb_yamls(root_dir, key_fmt, key_del='_', val_del='_'):
 
 
 def make_dict(key_fmt, val_fmt, key_del='_', val_del='_'):
+    """
+    Creates a dictionary from the given key and value formats.
+
+    Parameters
+    ----------
+    key_fmt : str
+        Format string for the keys.
+    val_fmt : str
+        Format string for the values.
+    key_del : str, optional
+        Delimiter for the keys (default is '_').
+    val_del : str, optional
+        Delimiter for the values (default is '_').
+
+    Returns
+    -------
+    dict
+        Dictionary created from the key and value formats.
+    """
     keys = key_fmt.split(key_del)
     vals = val_fmt.split(val_del)
     out_dict = {}
@@ -378,11 +541,23 @@ def make_dict(key_fmt, val_fmt, key_del='_', val_del='_'):
 
 
 def make_save_design_matrix(root_dir):
+    """
+    Creates and saves a design matrix for each subdirectory in the root directory.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory containing the subdirectories.
+
+    Returns
+    -------
+    None
+    """
     for f in os.listdir(root_dir):
         this_path = os.path.join(root_dir, f)
         out_name = os.path.join(this_path, f + '_design.h5')
         if valid_dir(this_path):
-            this_run, this_info = import_all_data(this_path)
+            this_run, this_info = process_all_data(this_path)
             try:
                 design_mat = make_design_matrix(this_run, this_info['Territory'])
                 out_file = h5py.File(out_name, 'w')
@@ -393,6 +568,20 @@ def make_save_design_matrix(root_dir):
 
 
 def make_anipose_directory(raw_data_folder, out_path):
+    """
+    Creates directories for Anipose processing.
+
+    Parameters
+    ----------
+    raw_data_folder : str
+        Folder containing the raw data.
+    out_path : str
+        Output path for the Anipose directories.
+
+    Returns
+    -------
+    None
+    """
     cam_dict = {'19060809': 'mid', '19194088': 'side', '19281943': 'top', '22049506': 'back'}
     targets = list(cam_dict.keys())
     sub_folds = os.listdir(raw_data_folder)
@@ -407,6 +596,21 @@ def make_anipose_directory(raw_data_folder, out_path):
 
 
 def load_kpms(kpms_csv, by_group=False):
+    """
+    Loads KPMS data from a CSV file.
+
+    Parameters
+    ----------
+    kpms_csv : str
+        Path to the KPMS CSV file.
+    by_group : bool, optional
+        Whether to group the data by a specific criterion (default is False).
+
+    Returns
+    -------
+    dict
+        Dictionary containing the loaded KPMS data.
+    """
     kpms_data = np.loadtxt(kpms_csv, delimiter=',', dtype=str)
     kpms_data = kpms_data[1:, 1:]
     names = np.unique(kpms_data[:, 0])

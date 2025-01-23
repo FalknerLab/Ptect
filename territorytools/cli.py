@@ -7,6 +7,13 @@ from territorytools.process import process_all_data
 
 
 def main():
+    """
+    Main function to parse arguments and execute the appropriate action.
+
+    Returns
+    -------
+    None
+    """
     flags = ['-folder', '-o', '-gui', '-demo']
     defaults = [None, None, False, False]
     parser = argparse.ArgumentParser(prog='TerritoryTools',
@@ -42,6 +49,13 @@ def main():
 
 
 def print_info():
+    """
+    Prints the version information from the version file.
+
+    Returns
+    -------
+    None
+    """
     v_file = open(os.path.abspath('resources/version.txt'), 'r')
     print(v_file.read())
 

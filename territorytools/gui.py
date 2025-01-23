@@ -28,11 +28,34 @@ for c in MOUSE_COLORS_MPL:
     MOUSE_COLORS_BGR.append(255*np.fliplr(np.array(matplotlib.colors.to_rgb(c))[None, :])[0])
 
 def get_data_dialog():
+    """
+    Opens a file dialog to select a directory.
+
+    Returns
+    -------
+    str
+        Path to the selected directory.
+    """
     dialog = QFileDialog()
     data_fold = dialog.getExistingDirectory()
     return data_fold
 
 def get_save_dialog(filter='', suffix=''):
+    """
+    Opens a file dialog to select a save file path.
+
+    Parameters
+    ----------
+    filter : str, optional
+        Filter for the file dialog (default is '').
+    suffix : str, optional
+        Suffix to add to the file name (default is '').
+
+    Returns
+    -------
+    str or None
+        Path to the selected save file or None if no file was selected.
+    """
     dialog = QFileDialog()
     save_path = dialog.getSaveFileName(filter=filter)
     if save_path[1] != '':
@@ -47,6 +70,14 @@ class PtectController:
     hot_data = np.empty((0, 3))
     cool_data = np.empty((0, 2))
     def __init__(self, data_folder: str = None):
+        """
+        Initializes the PtectController.
+
+        Parameters
+        ----------
+        data_folder : str, optional
+            Path to the data folder (default is None).
+        """
         if data_folder is None:
             data_folder = get_data_dialog()
         self.data_folder = data_folder
@@ -87,12 +118,35 @@ class PtectController:
             self.last_t_frame = self.test_frame
 
     def set_frame(self, frame_num: int):
+        """
+        Sets the current frame number.
+
+        Parameters
+        ----------
+        frame_num : int
+            Frame number to set.
+        """
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
             frame_num = 0
         self.frame_num = frame_num
         self.ptect.set_frame(frame_num)
 
     def get_data(self, which_data, time_win=None):
+        """
+        Retrieves data based on the specified type.
+
+        Parameters
+        ----------
+        which_data : str
+            Type of data to retrieve.
+        time_win : int, optional
+            Time window for data retrieval (default is None).
+
+        Returns
+        -------
+        various
+            Retrieved data based on the specified type.
+        """
         start_ind = self.frame_num - 1
         if time_win is not None:
             start_ind = self.frame_num - time_win
@@ -127,6 +181,14 @@ class PtectController:
             return None
 
     def get_optical_frame(self):
+        """
+        Retrieves the current optical frame.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the return status and the frame.
+        """
         op_frame_num = round(self.frame_num * (self.op_hz / self.control_hz))
         if op_frame_num != self.frame_num:
             self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
@@ -139,6 +201,19 @@ class PtectController:
         return ret, frame
 
     def read_next_frame(self, *args):
+        """
+        Reads the next frame and updates the data.
+
+        Parameters
+        ----------
+        *args : tuple
+            Additional arguments for resizing the frame.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the combined image, optical frame, and thermal frame.
+        """
         resize_w, resize_h = 1280, 480
         if len(args) == 2:
             resize_w, resize_h = args[:2]
@@ -162,6 +237,14 @@ class PtectController:
         return c_im.astype('uint8'), frame, out_frame
 
     def update_data(self, data):
+        """
+        Updates the data buffer with new data.
+
+        Parameters
+        ----------
+        data : list
+            New data to update.
+        """
         if len(data[0]) > 0:
             this_d = data[0]
             this_d[:, 0] = self.frame_num
@@ -169,6 +252,16 @@ class PtectController:
             self.hot_data = np.vstack((self.hot_data, this_d[new_inds, :]))
 
     def set_param(self, param, value):
+        """
+        Sets a parameter for the Peetector.
+
+        Parameters
+        ----------
+        param : str
+            Parameter name.
+        value : various
+            Value to set for the parameter.
+        """
         match param:
             case 'heat_thresh':
                 self.ptect.heat_thresh = value
@@ -205,34 +298,106 @@ class PtectController:
                     self.metadata.set_key_val('Territory/arena_data', value[1])
 
     def get_metadata(self, md):
+        """
+        Retrieves metadata based on the specified key.
+
+        Parameters
+        ----------
+        md : str
+            Metadata key.
+
+        Returns
+        -------
+        various
+            Retrieved metadata value.
+        """
         match md:
             case 'arena':
                 return self.metadata.get_val('Territory/thermal_center'), self.metadata.get_val('Territory/arena_type'), self.metadata.get_val('Territory/arena_data')
 
     def get_info(self):
+        """
+        Retrieves the metadata information as a string.
+
+        Returns
+        -------
+        str
+            Metadata information.
+        """
         return str(self.metadata)
 
     def save_info(self):
+        """
+        Saves the metadata information.
+        """
         self.metadata.save_metadata(self.metadata.file_name)
 
     def run_and_save(self, ppipe):
+        """
+        Runs the Peetector and saves the results.
+
+        Parameters
+        ----------
+        ppipe : PtectPipe
+            Pipe for the Peetector.
+        """
         self.ptect.run_ptect(pipe=ppipe, save_path=self.save_path)
 
     def get_file_list(self):
+        """
+        Retrieves the list of territory files.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the territory files.
+        """
         return find_territory_files(self.data_folder)
 
     def load_output(self):
+        """
+        Loads the processed data.
+
+        Returns
+        -------
+        various
+            Processed data.
+        """
         return process_all_data(self.data_folder)
 
 
 class PtectGUIpipe(PtectPipe):
     def __init__(self, pipe: pyqtSignal(tuple)):
+        """
+        Initializes the PtectGUIpipe.
+
+        Parameters
+        ----------
+        pipe : pyqtSignal
+            Signal for the pipe.
+        """
         self.pipe = pipe
 
     def send(self, *args):
+        """
+        Sends data through the pipe.
+
+        Parameters
+        ----------
+        *args : tuple
+            Data to send.
+        """
         self.pipe.emit(args[0])
 
     def set_buffer(self, data):
+        """
+        Sets the buffer data.
+
+        Parameters
+        ----------
+        data : various
+            Data to set in the buffer.
+        """
         self.buffer = data
 
 
@@ -243,6 +408,14 @@ class RunSignals(QObject):
 
 class PtectRunner(QObject):
     def __init__(self, ptect_cont: PtectController):
+        """
+        Initializes the PtectRunner.
+
+        Parameters
+        ----------
+        ptect_cont : PtectController
+            Controller for the Peetector.
+        """
         super().__init__()
 
         self.signals = RunSignals()
@@ -251,10 +424,21 @@ class PtectRunner(QObject):
 
     @pyqtSlot()
     def run(self):
+        """
+        Runs the Peetector and emits the finished signal.
+        """
         self.ptect_cont.run_and_save(self.gui_pipe)
         self.signals.finished.emit()
 
     def set_stop_cb(self, stop_cb):
+        """
+        Sets the stop callback.
+
+        Parameters
+        ----------
+        stop_cb : callable
+            Callback function to call when the process is stopped.
+        """
         self.signals.finished.connect(stop_cb)
 
 
@@ -262,13 +446,31 @@ class PtectThread(QThread):
     result = pyqtSignal(tuple)
     started = pyqtSignal()
 
-    def __init__(self, ptect_cont, parent=None, stop_cb=None):
+    def __init__(self, ptect_cont, parent=None):
+        """
+        Initializes the PtectThread.
+
+        Parameters
+        ----------
+        ptect_cont : PtectController
+            Controller for the Peetector.
+        parent : QObject, optional
+            Parent object (default is None).
+        """
         super().__init__(parent)
         self.worker = PtectRunner(ptect_cont)
         self.started.connect(self.worker.run)
         self.worker.signals.progress.connect(self.emit_worker_output)
 
     def spawn_workers(self, stop_cb=None):
+        """
+        Spawns worker threads.
+
+        Parameters
+        ----------
+        stop_cb : callable, optional
+            Callback function to call when the process is stopped (default is None).
+        """
         self.worker.gui_pipe.set_buffer(False)
         if stop_cb is not None:
             self.worker.set_stop_cb(stop_cb)
@@ -277,14 +479,35 @@ class PtectThread(QThread):
         self.started.emit()
 
     def emit_worker_output(self, output):
+        """
+        Emits the worker output.
+
+        Parameters
+        ----------
+        output : tuple
+            Output data from the worker.
+        """
         self.result.emit(output)
 
     def kill(self):
+        """
+        Kills the worker thread.
+        """
         self.worker.gui_pipe.set_buffer(True)
 
 
 class PtectWindow(QWidget):
     def __init__(self, ptect_cont: PtectController=None, parent=None):
+        """
+        Initializes a generic PtectWindow with logo.
+
+        Parameters
+        ----------
+        ptect_cont : PtectController, optional
+            Controller for the Peetector (default is None).
+        parent : QWidget, optional
+            Parent widget (default is None).
+        """
         super().__init__()
         self.parent = parent
         self.control = ptect_cont
@@ -295,6 +518,14 @@ class PtectWindow(QWidget):
 
 class PtectMainWindow(QMainWindow):
     def __init__(self, data_folder=None):
+        """
+        Initializes the PtectMainWindow, which manages each subwindow
+
+        Parameters
+        ----------
+        data_folder : str, optional
+            Path to the data folder (default is None).
+        """
         super().__init__()
         print('Importing Data...')
         self.control = PtectController(data_folder=data_folder)
@@ -305,6 +536,9 @@ class PtectMainWindow(QMainWindow):
         self.preview.show()
 
     def start_ptect(self):
+        """
+        Starts the Peetector process and switch to run window.
+        """
         self.preview.hide()
         self.run_win.show()
         save_path = get_save_dialog('.npz', '_ptect')
@@ -315,10 +549,16 @@ class PtectMainWindow(QMainWindow):
             self.preview.show()
 
     def stop_ptect(self):
+        """
+        Callback for when Ptect stops, switch back to preview window.
+        """
         self.run_win.hide()
         self.preview.show()
 
     def no_out(self):
+        """
+        Displays an error window when no output data is found.
+        """
         self.er_win = PtectWindow(parent=self)
         data_f = self.control.data_folder
         text = QLabel()
@@ -329,6 +569,9 @@ class PtectMainWindow(QMainWindow):
         self.er_win.show()
 
     def show_output(self):
+        """
+        Displays the output data in the data window.
+        """
         data_files = self.control.get_file_list()
         ptect_npz = data_files['ptect.npz']
         if ptect_npz is None:
@@ -339,12 +582,25 @@ class PtectMainWindow(QMainWindow):
             self.data_win.show()
 
     def close_output(self):
+        """
+        Closes the data window and switches back to the preview window.
+        """
         self.data_win.hide()
         self.preview.show()
 
 
 class PtectDataWindow(PtectWindow):
     def __init__(self, ptect_cont, parent=None):
+        """
+        Initializes the PtectDataWindow.
+
+        Parameters
+        ----------
+        ptect_cont : PtectController
+            Controller for the Peetector.
+        parent : QWidget, optional
+            Parent widget (default is None).
+        """
         super().__init__(ptect_cont, parent)
         self.resize(640, 480)
         self.setWindowTitle('Output from: ' + self.control.data_folder)
@@ -353,6 +609,14 @@ class PtectDataWindow(PtectWindow):
         self.setLayout(self.grid)
 
     def init_plots(self):
+        """
+        Initializes the plots for the data window.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the plot widgets.
+        """
         plot_dict = {}
         data_files = self.control.get_file_list()
         ptect_npz = data_files['ptect.npz']
@@ -405,11 +669,29 @@ class PtectDataWindow(PtectWindow):
         return plot_dict
 
     def closeEvent(self, event):
+        """
+        Handles the close event for the data window.
+
+        Parameters
+        ----------
+        event : QCloseEvent
+            Close event.
+        """
         self.parent.close_output()
 
 
 class PtectRunWindow(PtectWindow):
     def __init__(self, ptect_cont, parent=None):
+        """
+        Initializes the PtectRunWindow.
+
+        Parameters
+        ----------
+        ptect_cont : PtectController
+            Controller for the Peetector.
+        parent : QWidget, optional
+            Parent widget (default is None).
+        """
         super().__init__(ptect_cont, parent)
 
         res = self.screen().size()
@@ -438,9 +720,20 @@ class PtectRunWindow(PtectWindow):
         self.register_actions()
 
     def register_actions(self):
+        """
+        Registers actions for the run window.
+        """
         self.thread_pool.result.connect(self.update_run)
 
     def update_run(self, s):
+        """
+        Updates the run progress.
+
+        Parameters
+        ----------
+        s : tuple
+            Tuple containing the current and total frame numbers.
+        """
         frac_done = s[0] / s[1]
         next_x = int(frac_done*self.end_x)
         orig_p = self.icon_w.pos()
@@ -451,6 +744,14 @@ class PtectRunWindow(PtectWindow):
         self.message.update()
 
     def closeEvent(self, event):
+        """
+        Handles the close event for the run window.
+
+        Parameters
+        ----------
+        event : QCloseEvent
+            Close event.
+        """
         self.thread_pool.kill()
         self.parent.stop_ptect()
 
@@ -460,6 +761,16 @@ class PtectPreviewWindow(PtectWindow):
     thresh_controls = []
 
     def __init__(self, ptect_cont, parent=None):
+        """
+        Initializes the PtectPreviewWindow.
+
+        Parameters
+        ----------
+        ptect_cont : PtectController
+            Controller for the Peetector.
+        parent : QWidget, optional
+            Parent widget (default is None).
+        """
         super().__init__(ptect_cont, parent)
         res = self.screen().size()
         self.resize(int(res.width()*0.8), int(res.height()*0.8))
@@ -500,6 +811,9 @@ class PtectPreviewWindow(PtectWindow):
         self.draw_timer.start(1000)
 
     def add_controls(self):
+        """
+        Adds control widgets to the preview window.
+        """
         params = ['heat_thresh', 'cool_thresh', 'time_thresh']
         disp_names = ['Heat Thesh', 'Cool Thresh', 'Check Ahead # of Frames']
         num_slides = len(params)
@@ -611,14 +925,23 @@ class PtectPreviewWindow(PtectWindow):
         self.layout.addWidget(self.arena_controls, 0, 2, 1, num_slides+3)
 
     def set_controls(self):
+        """
+        Sets the widget values for the preview window.
+        """
         arena_data = self.control.get_metadata('arena')
         self.arena_controls.set_values(arena_data)
         self.arena_controls.set_frame(self.control.test_frame)
 
     def set_dz(self):
+        """
+        Sets the arena dead zone parameter.
+        """
         self.control.set_param('deadzone', self.dz_pt_box.text())
 
     def update_gui(self):
+        """
+        Updates the GUI elements at each step of the main QTimer.
+        """
         for c in self.thresh_controls:
             param, val = c.get_value()
             self.control.set_param(param, val)
@@ -632,10 +955,16 @@ class PtectPreviewWindow(PtectWindow):
             self.update_video()
 
     def draw_plots(self):
+        """
+        Draws the plots in the preview window.
+        """
         for p in (self.xy_plotter, self.raster_plotter, self.vel_plotter, self.mark_plotter):
             p.draw()
 
     def update_video(self):
+        """
+        Updates the video frame in the preview window.
+        """
         frames = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
         frame = frames[0]
         self.prev_im = frames[2]
@@ -645,6 +974,9 @@ class PtectPreviewWindow(PtectWindow):
         self.prev_frame.setPixmap(QPixmap(q_frame))
 
     def update_plots(self):
+        """
+        Updates the plots in the preview window.
+        """
         hot_marks, split_marks = self.control.get_data('thermal')
         if hot_marks is not None:
             self.mark_plotter.clear()
@@ -672,6 +1004,16 @@ class PtectPreviewWindow(PtectWindow):
 
 class SlideInputer(QGroupBox):
     def __init__(self, name, label=None):
+        """
+        Initializes the SlideInputer.
+
+        Parameters
+        ----------
+        name : str
+            Name of the slider.
+        label : str, optional
+            Label for the slider (default is None).
+        """
         if label is None:
             super().__init__(name)
         else:
@@ -693,15 +1035,39 @@ class SlideInputer(QGroupBox):
         self.setLayout(slide_group)
 
     def update_slide(self, val):
+        """
+        Updates the slider value.
+
+        Parameters
+        ----------
+        val : str
+            Value to set for the slider.
+        """
         if len(val) > 0:
             val = int(val)
             self.slide.setValue(val)
 
     def update_ebox(self, val):
+        """
+        Updates the edit box value.
+
+        Parameters
+        ----------
+        val : int
+            Value to set for the edit box.
+        """
         val = str(val)
         self.ebox.setText(val)
 
     def get_value(self):
+        """
+        Retrieves the current value of the slider.
+
+        Returns
+        -------
+        tuple
+            Tuple containing the slider ID and value.
+        """
         return self.id, self.slide.value()
 
 
@@ -712,6 +1078,16 @@ class ArenaSelector(QGroupBox):
     custom_pts = []
     settings_dict = {}
     def __init__(self, name, arena_type='circle'):
+        """
+        Initializes the ArenaSelector.
+
+        Parameters
+        ----------
+        name : str
+            Name of the arena selector.
+        arena_type : str, optional
+            Type of the arena (default is 'circle').
+        """
         super().__init__(name)
         self.arena_type = arena_type
         self.custom_pt_num = 3
@@ -730,6 +1106,16 @@ class ArenaSelector(QGroupBox):
 
 
     def update_controls(self, arena, data=None):
+        """
+        Updates the controls for the arena selector.
+
+        Parameters
+        ----------
+        arena : str
+            Type of the arena.
+        data : various, optional
+            Data for the arena (default is None).
+        """
         for sc in self.sub_controls:
             sc.setParent(None)
         self.sub_controls = []
@@ -791,6 +1177,14 @@ class ArenaSelector(QGroupBox):
         self.update_settings()
 
     def get_arena_data(self):
+        """
+        Retrieves the arena data.
+
+        Returns
+        -------
+        tuple
+            Tuple containing the arena type and data.
+        """
         outs_args = []
         if self.arena_type != 'custom':
             for sc in self.sub_controls:
@@ -801,9 +1195,15 @@ class ArenaSelector(QGroupBox):
         return self.arena_type, outs_args
 
     def update_settings(self):
+        """
+        Updates the settings for the arena selector.
+        """
         self.settings_dict[self.arena_type] = self.get_arena_data()[1]
 
     def draw_arena(self):
+        """
+        Draws the custom arena.
+        """
         f = plt.figure(label='Custom Arena GUI')
         plt.imshow(self.frame_buf)
         plt.title(f'Click {self.custom_pt_num} times to define arena')
@@ -812,9 +1212,25 @@ class ArenaSelector(QGroupBox):
         self.custom_pts = np.array(pnts).astype(int)
 
     def set_frame(self, frame):
+        """
+        Sets the frame buffer.
+
+        Parameters
+        ----------
+        frame : various
+            Frame buffer to set.
+        """
         self.frame_buf = frame
 
     def set_values(self, data):
+        """
+        Sets the values for the arena selector.
+
+        Parameters
+        ----------
+        data : various
+            Data to set.
+        """
         a_type = data[1]
         a_d = (data[0][0], data[0][1], data[2])
         if a_type == 'rectangle':
@@ -824,6 +1240,9 @@ class ArenaSelector(QGroupBox):
 
 class MplCanvas(FigureCanvasQTAgg):
     def __init__(self):
+        """
+        Initializes an MplCanvas to display Matplotlib plots via QTAgg
+        """
         self.fig = plt.Figure()
         self.ax = self.fig.add_subplot(111)
         FigureCanvasQTAgg.__init__(self, self.fig)
@@ -833,6 +1252,14 @@ class MplCanvas(FigureCanvasQTAgg):
 
 class PlotWidget(QWidget):
     def __init__(self, parent=None):
+        """
+        Initializes the PlotWidget.
+
+        Parameters
+        ----------
+        parent : QWidget, optional
+            Parent widget (default is None).
+        """
         QWidget.__init__(self, parent)
         self.current_pobj = []
         self.canvas = MplCanvas()
@@ -846,9 +1273,20 @@ class PlotWidget(QWidget):
         self.setLayout(self.vbl)
 
     def gca(self):
+        """
+        Retrieves the current axis from the MplCanvas
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            Current axis.
+        """
         return self.canvas.ax
 
     def clear(self):
+        """
+        Clears the plot.
+        """
         if len(self.current_pobj) > 0:
             for pobj_list in self.current_pobj:
                 if type(pobj_list) is PathCollection:
@@ -859,6 +1297,18 @@ class PlotWidget(QWidget):
             self.current_pobj = []
 
     def plot(self, *args, plot_style=None, **kwargs):
+        """
+        Plots the data.
+
+        Parameters
+        ----------
+        *args : tuple
+            Data to plot.
+        plot_style : str, optional
+            Style of the plot (default is None).
+        **kwargs : dict
+            Additional keyword arguments for the plot. Passed to matplotlib.plot
+        """
         my_ax = self.gca()
         if plot_style is not None:
             if plot_style == 'scatter':
@@ -868,9 +1318,28 @@ class PlotWidget(QWidget):
         # self.canvas.draw()
 
     def draw(self):
+        """
+        Draws the plot.
+        """
         self.canvas.draw()
 
     def colorbar(self, min_val, max_val, label='', orient='vertical', cmap='summer'):
+        """
+        Adds a colorbar to the plot.
+
+        Parameters
+        ----------
+        min_val : float
+            Minimum value for the colorbar.
+        max_val : float
+            Maximum value for the colorbar.
+        label : str, optional
+            Label for the colorbar (default is '').
+        orient : str, optional
+            Orientation of the colorbar (default is 'vertical').
+        cmap : str, optional
+            Colormap for the colorbar (default is 'summer').
+        """
         norm = matplotlib.colors.Normalize(vmin=min_val, vmax=max_val)
 
         self.canvas.fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap),
@@ -879,6 +1348,14 @@ class PlotWidget(QWidget):
 
 class PtectApp:
     def __init__(self, data_folder: str = None):
+        """
+        Initializes the PtectApp. Starts the QApplication process
+
+        Parameters
+        ----------
+        data_folder : str, optional
+            Path to the data folder (default is None).
+        """
         self.app = QApplication(sys.argv)
         self.gui = PtectMainWindow(data_folder=data_folder)
         sys.exit(self.app.exec())
