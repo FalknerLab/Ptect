@@ -13,7 +13,7 @@
 
 # Installation
 ## Install as a package
-`pip install git+https://github.com/FalknerLab/Ptect.git
+`pip install git+https://github.com/FalknerLab/Ptect.git`
 ### Usage
 ```
 import territorytools as tt
