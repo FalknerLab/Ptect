@@ -12,7 +12,11 @@
 5. Git and Conda for development
 
 # Installation
-## Install as a package
+## As a Package
+### Initialize a new Conda environment
+`conda create -n TerritoryTools pip`
+`conda activate TerritoryTools`
+### Install as a package
 `pip install git+https://github.com/FalknerLab/Ptect.git`
 ### Usage
 ```
@@ -24,7 +28,15 @@ gui = tt.gui.PtectApp \n
 #Processing and Loading Data
 data = tt.process.process_all_data(your_folder)
 ```
-## Clone from Source
+### Running from terminal
+**Running the Demo**
+`ptect -demo`
+**Processing Data**
+`ptect /path_to_data_folder`
+**Launching the GUI**
+`ptect /path_to_data_folder -gui`
+
+## As a developer (Clone from Source)
 ### Clone repo to local
 `git clone https://github.com/FalknerLab/Ptect.git`
 ### Create TerritoryTools environment and install packages
@@ -32,9 +44,6 @@ data = tt.process.process_all_data(your_folder)
 ### Activate TerritoryTools environment before running code
 `conda activate TerritoryTools`
 
-## Running from terminal (requires cloning from source)
-After cloning and creating the TT environment, you can process data and run the GUI directly from the terminal.
-This is useful for making bash scripts and deploying Ptect to remote machines/clusters
 
 
 
