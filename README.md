@@ -15,6 +15,7 @@
 ## As a Package
 ### Initialize a new Conda environment
 `conda create -n TerritoryTools pip`
+
 `conda activate TerritoryTools`
 ### Install as a package
 `pip install git+https://github.com/FalknerLab/Ptect.git`
@@ -23,17 +24,22 @@
 import territorytools as tt
 
 #Running GUI
-gui = tt.gui.PtectApp \n
+gui = tt.gui.PtectApp 
 
 #Processing and Loading Data
 data = tt.process.process_all_data(your_folder)
 ```
 ### Running from terminal
 **Running the Demo**
+
 `ptect -demo`
+
 **Processing Data**
+
 `ptect /path_to_data_folder`
+
 **Launching the GUI**
+
 `ptect /path_to_data_folder -gui`
 
 ## As a developer (Clone from Source)
