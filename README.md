@@ -24,7 +24,7 @@
 import territorytools as tt
 
 #Running GUI
-gui = tt.gui.PtectApp 
+gui = tt.gui.PtectApp()
 
 #Processing and Loading Data
 data = tt.process.process_all_data(your_folder)
