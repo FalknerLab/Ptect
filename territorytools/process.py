@@ -38,7 +38,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
         print(f'Loading territory data from folder: {run_folder_root}')
     else:
         print(f'{run_folder_root} does not contain all territory dataset files (ptmetadata.yml, top.mp4, top.h5, thermal.mp4, thermal.h5)')
-        return None
+        return None, None
 
     files_dict = find_territory_files(run_folder_root)
 
@@ -64,7 +64,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
 
     if out_data is not None:
         run_data = np.load(out_data, allow_pickle=True)
-        return run_data
+        return run_data, md_dict
 
     orient = md_dict['Territory']['orientation'].lower()
     op_cent = md_dict['Territory']['optical_center']
@@ -171,7 +171,7 @@ def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=
         # make_nwb(mouse_list, md_dict, save_path)
         np.save(out_path, mouse_list, allow_pickle=True)
 
-    return mouse_list
+    return mouse_list, md_dict
 
 
 def make_nwb(data, metadata, file_name):
