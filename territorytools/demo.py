@@ -3,7 +3,7 @@ import os
 from territorytools.gui import PtectApp
 
 
-def get_demo_data(google_drive_link, demo_fold='tests/territorytools_demo'):
+def get_demo_google(google_drive_link, demo_fold='../tests/territorytools_demo'):
     """
     Downloads demo data from a Google Drive link and saves it to a specified folder.
 
@@ -25,7 +25,10 @@ def get_demo_data(google_drive_link, demo_fold='tests/territorytools_demo'):
         gdown.download_folder(google_drive_link)
     return abs_path
 
-def run_demo():
+def get_demo_folder():
+    return '../tests/territorytools_demo'
+
+def run_demo(use_gdrive=False):
     """
     Runs the demo by downloading the demo data and launching the PtectApp GUI.
 
@@ -33,8 +36,10 @@ def run_demo():
     -------
     None
     """
-    fold_link = 'https://drive.google.com/drive/folders/1e58QlTkZTtZICjvpynQGK6FA5y0IkVGT?usp=sharing'
-    demo_path = get_demo_data(fold_link)
+    demo_path = get_demo_folder()
+    if use_gdrive:
+        fold_link = 'https://drive.google.com/drive/folders/1e58QlTkZTtZICjvpynQGK6FA5y0IkVGT?usp=sharing'
+        demo_path = get_demo_folder(fold_link)
     gui = PtectApp(data_folder=demo_path)
 
 if __name__ == '__main__':
