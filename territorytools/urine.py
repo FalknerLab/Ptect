@@ -190,7 +190,7 @@ class Peetector:
             self.fill_pts = flood_pnts
         self.dead_zones = dead_zones
         self.arena_cnt = cent_xy
-        self.radius = radius
+        self.arena_params = ()
         self.px_per_cm = px_per_cm
         self.heat_thresh = hot_thresh
         self.cool_thresh = cold_thresh
@@ -209,6 +209,7 @@ class Peetector:
         self.current_frame = start_frame
         self.set_frame(start_frame)
         self.output_buffer = ()
+        self.arena_shape = 'circle'
 
 
     def get_length(self):
@@ -243,6 +244,10 @@ class Peetector:
         frame_num : int
             Frame number to set.
         """
+        # if frame_num >= self.total_frames-1:
+        #     # self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, 1)
+        #     # self.vid_obj = cv2.VideoCapture(self.thermal_vid)
+        # else:
         self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
         self.current_frame = frame_num
 
@@ -434,7 +439,8 @@ class Peetector:
 
             if return_frame:
                 if self.frame_type == 2:
-                    out_frame = self.show_all_steps(mask, fill_pnts[self.current_frame])
+                    output_f = self.show_output(frame_i, good_events, fill_pnts[self.current_frame], cool_evts)
+                    out_frame = self.show_all_steps(mask, fill_pnts[self.current_frame], output_f)
                 else:
                     out_frame = self.show_output(frame_i, good_events, fill_pnts[self.current_frame], cool_evts)
 
@@ -494,6 +500,7 @@ class Peetector:
         # fill in all the given points with black
         fill_frame = self.fill_frame_with_points(di_frame, pts, im_w, im_h)
 
+        # erode back previous dilation
         kern = self.dilate_kern
         e_kern = np.ones((kern, kern), np.uint8)
         er_frame = cv2.erode(fill_frame, e_kern, iterations=1)
@@ -523,7 +530,7 @@ class Peetector:
         if np.sum(cool_mask) > 0:
             cool_xys = np.argwhere(cool_mask > 0)
 
-        return urine_xys, cool_xys, [f1, frame_smooth, dz_frame, test, di_frame, fill_frame, cool_mask]
+        return urine_xys, cool_xys, [frame_smooth, test, di_frame, fill_frame, dz_frame, cool_mask]
 
 
     def set_valid_arena(self, shape, *args):
@@ -540,7 +547,15 @@ class Peetector:
         self.valid_zone = make_shape_mask(self.width, self.height, shape,
                                           self.arena_cnt[0], self.arena_cnt[1],*args)
         if shape == 'circle':
-            self.radius = args[0]
+            self.arena_params = args[0]
+
+        if shape == 'rectangle':
+            self.arena_params = args[:2]
+
+        else:
+            self.arena_params = args
+
+        self.arena_shape = shape
 
     def urine_px_to_cm_rot(self, pts_list, rot_ang=0):
         """
@@ -744,7 +759,7 @@ class Peetector:
 
         return self.dead_zones
 
-    def show_all_steps(self, mask_list, pnts):
+    def show_all_steps(self, mask_list, pts, out_frame):
         """
         Shows all processing steps for a frame.
 
@@ -760,18 +775,33 @@ class Peetector:
         numpy.ndarray
             Concatenated image of all processing steps.
         """
+
+        # mask_list order: [frame_smooth, heat, di_frame, fill_frame, dz_frame, cool_mask]
+        mask_list = [cv2.cvtColor(m.astype(np.uint8), cv2.COLOR_GRAY2BGR) for m in mask_list]
+
         concat_masks = np.zeros((640, 480))
+        mask_h, mask_w, mask_d = np.shape(mask_list[0])
+        out_frame = cv2.resize(out_frame, (mask_w, mask_h))
+        draw_sleap_pts(mask_list[3], pts)
+        draw_zones(mask_list[4], self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
+
         if len(mask_list) > 0:
-            top_half = cv2.cvtColor(np.hstack(mask_list[:3]), cv2.COLOR_GRAY2BGR)
-            left_half = cv2.cvtColor(np.hstack(mask_list[3:-2]), cv2.COLOR_GRAY2BGR)
-            fframe = cv2.cvtColor(mask_list[0], cv2.COLOR_GRAY2BGR)
-            fframe[mask_list[-1] == 1] = [255, 255, 0]
-            for s in pnts:
-                slp_pnt = s.astype(int)
-                cv2.circle(fframe, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
-            bot_half = np.hstack((left_half, fframe))
+            top_half = np.hstack(mask_list[:3])
+            left_half = np.hstack(mask_list[3:-1])
+            bot_half = np.hstack((left_half, out_frame))
             concat_masks = np.vstack((top_half, bot_half))
-        return concat_masks
+        text_xs = np.array([0.05, 1.05, 2.05, 0.05, 1.05]) * mask_w
+        text_ys = np.array([0.95, 0.95, 0.95, 1.95, 1.95]) * mask_h
+        text_labs = ['Smooth', 'Heat Thresh', 'Dilate', 'Filled', 'Mask Zones']
+        font = ImageFont.truetype('../resources/fira_mono.ttf', 32)
+        img_pil = Image.fromarray(concat_masks)
+        draw = ImageDraw.Draw(img_pil)
+        for x, y, l in zip(text_xs, text_ys, text_labs):
+            draw.rectangle(((int(x) - 8, int(y) - 30), (int(x) + len(l) * 20, int(y) + 5)),
+                          (255, 255, 255), -1)
+            draw.text((int(x), int(y)), l, font=font, fill=(0, 0, 0, 0), anchor='lb')
+        img = np.array(img_pil)
+        return img
 
     def show_output(self, raw_frame, urine_pnts, sleap_pnts, cool_pnts):
         """
@@ -793,22 +823,18 @@ class Peetector:
         numpy.ndarray
             Annotated output frame.
         """
-        cv2.circle(raw_frame, (self.arena_cnt[0], self.arena_cnt[1]), self.radius, (255, 255, 255, 255), 1, cv2.LINE_AA)
+        draw_zones(raw_frame, self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
+
         cols = ((0, 1), (1, 2))
         for pnts, c in zip((cool_pnts, urine_pnts), cols):
             if len(pnts) > 0:
                 raw_frame[pnts[:, 0], pnts[:, 1], c[0]] = 255
                 raw_frame[pnts[:, 0], pnts[:, 1], c[1]] = 255
 
-        for s in sleap_pnts:
-            slp_pnt = s.astype(int)
-            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
-        for d in self.dead_zones:
-            pts = np.array(d, dtype=np.int32)
-            cv2.polylines(raw_frame, [pts], True, (0, 0, 250), 1, cv2.LINE_AA)
+        draw_sleap_pts(raw_frame, sleap_pnts)
 
         big_frame = cv2.resize(raw_frame, (1280, 960))
-        font = ImageFont.truetype('arial.ttf', 48)
+        font = ImageFont.truetype('../resources/fira_mono.ttf', 48)
         img_pil = Image.fromarray(big_frame)
         draw = ImageDraw.Draw(img_pil)
         draw.text((20, 10), 'Fill Points', font=font, fill=(100, 100, 200, 0))
@@ -817,6 +843,28 @@ class Peetector:
         draw.text((20, 160), 'Hot Mark', font=font, fill=(0, 255, 255, 0))
         img = np.array(img_pil)
         return img
+
+def draw_zones(raw_frame, shape, cent_x, cent_y, arena_data, dead_zones):
+    match shape:
+        case 'circle':
+            cv2.circle(raw_frame, (cent_x, cent_y), arena_data[0], (255, 255, 255, 255), 1,
+                       cv2.LINE_AA)
+        case 'rectangle':
+            start_pt = (cent_x - arena_data[0] // 2, cent_y - arena_data[1] // 2)
+            end_pt = (cent_x + arena_data[0] // 2, cent_y + arena_data[1] // 2)
+            cv2.rectangle(raw_frame, start_pt, end_pt, (255, 255, 255, 255), 1, cv2.LINE_AA)
+        case 'custom':
+            pts = np.array(arena_data)
+            cv2.polylines(raw_frame, [pts], True, (255, 255, 255, 255), 1, cv2.LINE_AA)
+
+    for d in dead_zones:
+        pts = np.array(d, dtype=np.int32)
+        cv2.polylines(raw_frame, [pts], True, (0, 0, 250), 1, cv2.LINE_AA)
+
+def draw_sleap_pts(raw_frame, sleap_pnts):
+    for s in sleap_pnts:
+        slp_pnt = s.astype(int)
+        cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
 
 
 class PBuffer:
