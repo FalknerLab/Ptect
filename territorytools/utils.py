@@ -26,16 +26,18 @@ def find_rename_cam_videos(root_dir, cam_dict=None):
     conts = os.listdir(root_dir)
     for f in conts:
         f_suf = f.split('.')
+        root_n = os.path.split(root_dir)[-1]
         next_dir = os.path.join(root_dir, f)
         if f_suf[-1] in cam_dict.keys():
             vid_file = os.path.join(next_dir, '000000.mp4')
             daq_file = os.path.join(next_dir, '000000.npz')
             md_file = os.path.join(next_dir, 'metadata.yaml')
-            new_vid = os.path.join(next_dir, f'{f_suf[0]}_{cam_dict[f_suf[-1]]}.mp4')
-            new_daq = os.path.join(next_dir, f'{f_suf[0]}_{cam_dict[f_suf[-1]]}.npz')
-            new_md = os.path.join(next_dir, f'{f_suf[0]}_{cam_dict[f_suf[-1]]}_metadata.yaml')
-            for s, d in zip((vid_file, daq_file, md_file), (new_vid, new_daq, new_md)):
-                os.rename(s, d)
+            new_vid = os.path.join(next_dir, f'{root_n}_{cam_dict[f_suf[-1]]}.mp4')
+            new_daq = os.path.join(next_dir, f'{root_n}_{cam_dict[f_suf[-1]]}.npz')
+            new_md = os.path.join(next_dir, f'{root_n}_{cam_dict[f_suf[-1]]}_metadata.yaml')
+            if os.path.exists(vid_file):
+                for s, d in zip((vid_file, daq_file, md_file), (new_vid, new_daq, new_md)):
+                    os.rename(s, d)
         if os.path.isdir(next_dir):
             find_rename_cam_videos(next_dir, cam_dict=cam_dict)
 
@@ -359,13 +361,30 @@ def find_rename_cam_folders(root_dir, cam_dict=None):
         if os.path.isdir(next_dir):
             find_rename_cam_folders(next_dir, cam_dict=cam_dict)
 
+def rename_ri(root_dir):
+    for root in os.listdir(root_dir):
+        this_dir = os.path.join(root_dir, root)
+        new_name = this_dir.replace('resident', 'self')
+        new_name = new_name.replace('intruder', 'other')
+        os.rename(this_dir, new_name)
+
+    for root, dirs, files in os.walk(root_dir, topdown=False):
+        for f in files:
+            this_dir = os.path.join(root, f)
+            new_dir = this_dir.lower()
+            new_dir = new_dir.replace('resident', 'self')
+            new_dir = new_dir.replace('intruder', 'other')
+            os.rename(this_dir, new_dir)
+
 
 if __name__ == '__main__':
     # root_dir = 'D:/ptect_dataset/testing/kpms'
     # for f in os.listdir(root_dir):
     #     file_n = os.path.join(root_dir, f)
-    fix_sleap_h5('D:\\ptect_dataset\\PPsync4_Resident_DAB014_Intruder_DAB019_Day_0_Orientation_IRN\\Block0\\PPsync4_Resident_DAB014_Intruder_DAB019_Day_1_Block_0_Orientation_IRN_thermal.h5',
-                 block=0, orientation='irn', cent_xy=(318, 275))
+    fix_sleap_h5('D:\\ptect_dataset\\AggExp\\data\\'
+                 'aggexppilot_self_dab019_other_dab013_day_1_block_0_orientation_rni_20250127_125723\\'
+                 'aggexppilot_self_dab019_other_dab013_day_1_block_0_orientation_rni_20250127_125723_top_old.h5',
+                 block=0, orientation='rni', cent_xy=(707, 541))
 
     # root_dir = 'D:/ptect_dataset/kpms/grid_movies'
     # for f in os.listdir(root_dir):
@@ -377,4 +396,5 @@ if __name__ == '__main__':
     #         print(command)
     #         os.system(command)
 
-    # find_rename_cam_folders('D:\\ptect_dataset')
+    # rename_ri('D:\\ptect_dataset\\AggExp\\data')
+    # find_rename_cam_videos('D:\\ptect_dataset\\AggExp\\data', cam_dict={'top':'top', 'side1':'side1', 'side2':'side2', 'side3':'side3'})
