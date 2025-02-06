@@ -109,7 +109,7 @@ class BasicRun:
         info_dict : dict
             Metadata associated with the run.
         """
-        self.info = info_dict
+        self.info = MDcontroller(info_dict)
         self.data = data
 
     def get_key_val(self, key_name: str, nest_dict=None):
@@ -128,9 +128,10 @@ class BasicRun:
         any
             Value associated with the key.
         """
-        if nest_dict is None:
-            nest_dict = self.info
-        return get_key_val_recur(key_name, nest_dict)
+        # if nest_dict is None:
+        #     nest_dict = self.info
+        # return get_key_val_recur(key_name, nest_dict)
+        return self.info.get_val(key_name)
 
     def add_key_val(self, key_name, key_val):
         """
@@ -147,7 +148,8 @@ class BasicRun:
         -------
         None
         """
-        self.info[key_name] = key_val
+        # self.info[key_name] = key_val
+        self.info.set_key_val(key_name, key_val)
 
 
 class RunFromFile(BasicRun):
@@ -229,7 +231,7 @@ class BasicExp:
     get_run_data()
         Gets data for all runs.
     """
-    def __init__(self, runs):
+    def __init__(self, runs: list[BasicRun]):
         """
         Initializes a BasicExp instance.
 
@@ -240,7 +242,7 @@ class BasicExp:
         """
         self.runs = runs
 
-    def compute_across_runs(self, func, *args, pass_info=False):
+    def compute_across_runs(self, func, *args, arg_per_run=False, pass_info=False):
         """
         Computes a function across all runs.
 
@@ -257,8 +259,12 @@ class BasicExp:
             New experiment with computed runs.
         """
         run_list = []
-        for r in self.runs:
-            run_list.append(ComputeRun(r, func, *args, with_info=pass_info))
+        if arg_per_run:
+            for r, a in zip(self.runs, args[0]):
+                run_list.append(ComputeRun(r, func, a, with_info=pass_info))
+        else:
+            for r in self.runs:
+                run_list.append(ComputeRun(r, func, *args, with_info=pass_info))
         return BasicExp(run_list)
 
     def compute_across_groups(self, key_name, func, *args, arg_per_group=False):
@@ -282,7 +288,7 @@ class BasicExp:
         group_out = dict()
         group_ids, _ = self.unique_key_vals(key_name)
         for ind, g in enumerate(group_ids):
-            group_runs = self.get_runs_from_key_val(key_name, g)
+            group_runs = self.get_runs_from_key_val(key_name, g)[0]
             group_data, group_info = self.get_group_data_info(group_runs)
             if arg_per_group:
                 group_out[g] = func(g, group_data, group_info, args[0][ind])
@@ -308,7 +314,7 @@ class BasicExp:
         any
             Computed value for the group.
         """
-        group_runs = self.get_runs_from_key_val(key_name, key_val)
+        group_runs = self.get_runs_from_key_val(key_name, key_val)[0]
         group_data, group_info = self.get_group_data_info(group_runs)
         group_out = func(key_val, group_data, group_info, *args)
         return group_out
@@ -353,10 +359,12 @@ class BasicExp:
             List of runs that match the key-value pair.
         """
         flagged_runs = []
-        for r in self.runs:
+        run_inds = []
+        for i, r in enumerate(self.runs):
             if r.get_key_val(key_name) == key_val:
                 flagged_runs.append(r)
-        return flagged_runs
+                run_inds.append(i)
+        return flagged_runs, run_inds
 
     def get_group_data_info(self, group_runs):
         """
@@ -397,7 +405,7 @@ class BasicExp:
         BasicExp
             New experiment with filtered runs.
         """
-        return BasicExp(self.get_runs_from_key_val(key_name, key_val))
+        return BasicExp(self.get_runs_from_key_val(key_name, key_val)[0])
 
     def get_run_data(self):
         """
@@ -410,6 +418,28 @@ class BasicExp:
         """
         run_data = [r.data for r in self.runs]
         return run_data
+
+    def remove_runs(self, *args):
+        out_runs = self.runs.copy()
+        if len(args) == 1:
+            out_runs.pop(args[0])
+            return BasicExp(out_runs)
+        elif len(args) == 2:
+            _, run_inds = self.get_runs_from_key_val(args[0], args[1])
+            [out_runs.pop(r) for r in run_inds]
+            return BasicExp(out_runs)
+
+    def num_runs(self):
+        """
+        Gets number of runs.
+
+        Returns
+        -------
+        int
+            Number of runs.
+
+        """
+        return len(self.runs)
 
 
 class MDcontroller:
@@ -440,9 +470,14 @@ class MDcontroller:
         *args : str
             Optional file name to load metadata from.
         """
+        self.file_name = None
+        self.metadata = dict()
         if len(args) > 0:
-            self.file_name = args[0]
-        self.metadata = load_metadata(self.file_name)
+            if type(args[0]) is str:
+                self.file_name = args[0]
+                self.metadata = load_metadata(self.file_name)
+            elif type(args[0]) is dict:
+                self.metadata = args[0]
 
     def add_metadata(self, key: str, value: str or dict):
         """
@@ -542,6 +577,9 @@ class MDcontroller:
         """
         yaml_file = open(save_path, 'w')
         yaml.safe_dump(self.metadata, yaml_file)
+
+    def __str__(self):
+        return dict_to_yaml(self.metadata)
 
 
 def dict_to_yaml(md_dict: dict, indent=0):
