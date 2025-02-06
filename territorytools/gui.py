@@ -26,6 +26,7 @@ MOUSE_COLORS_BGR = []
 MOUSE_COLORS_MPL = ('tab:blue', 'tab:orange')
 for c in MOUSE_COLORS_MPL:
     MOUSE_COLORS_BGR.append(255*np.fliplr(np.array(matplotlib.colors.to_rgb(c))[None, :])[0])
+matplotlib.rcParams.update({'font.size': 12})
 
 def get_data_dialog():
     """
@@ -207,12 +208,6 @@ class PtectController:
         op_frame_num = min(op_frame_num, self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT) - 1)
         op_frame_num = int(op_frame_num)
         self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
-        # if op_frame_num != self.frame_num:
-        #     self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
-        # if self.frame_num - self.last_frame > 1:
-        #     self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
-        # elif self.frame_num == 0:
-        #     self.optical_vid.set(cv2.CAP_PROP_FRAME_COUNT, 0)
         ret, frame = self.optical_vid.read()
         for ind, sd in enumerate(self.sleap_data):
             not_nan = ~np.isnan(sd[0, :, op_frame_num])
@@ -886,6 +881,12 @@ class PtectPreviewWindow(PtectWindow):
             self.set_controls(slide_settings=conts)
         load_but.clicked.connect(load_data)
 
+        self.reset_marks_but = QPushButton('Reset Marks')
+        def reset_marks():
+            self.mark_plotter.clear()
+            self.control.clear_data()
+        self.reset_marks_but.clicked.connect(reset_marks)
+
         run_but = QPushButton('Run and Save')
         def run_ptect():
             self.parent.start_ptect()
@@ -900,10 +901,11 @@ class PtectPreviewWindow(PtectWindow):
         sub_layout = QHBoxLayout()
         sub_layout.addWidget(play)
         sub_layout.addWidget(load_but)
+        sub_layout.addWidget(self.reset_marks_but)
         sub_layout.addWidget(run_but)
         sub_layout.addWidget(show_but)
         but_group.setLayout(sub_layout)
-        self.layout.addWidget(but_group, 5, 0, 1, 2)
+        self.layout.addWidget(but_group, 5, 0, 1, 3)
 
 
         info_gb = QGroupBox('Run Info')
@@ -961,8 +963,14 @@ class PtectPreviewWindow(PtectWindow):
         xy_ax.legend()
         self.layout.addWidget(self.xy_plotter, 3, 0, 2, 1)
 
+        for a in (xy_ax, mark_ax):
+            a.set_xlabel('X Pos. (cm)')
+            a.set_ylabel('Y Pos. (cm)')
+
         self.vel_plotter = PlotWidget()
         vel_ax = self.vel_plotter.gca()
+        vel_ax.set_yticks([0.5, 1.5])
+        vel_ax.set_yticklabels(['Self', 'Other'])
         vel_ax.set_xlim(0, self.control.get_data('length'))
         vel_ax.set_title('Mouse Velocity (normalized)')
         vels = self.control.get_data('velocity')
@@ -974,16 +982,12 @@ class PtectPreviewWindow(PtectWindow):
 
         self.raster_plotter = PlotWidget()
         rast_ax = self.raster_plotter.gca()
+        rast_ax.set_yticks([0.5, 1.5])
+        rast_ax.set_yticklabels(['Self', 'Other'])
         rast_ax.set_xlim(0, self.control.get_data('length'))
+        rast_ax.set_xlabel('Frame #')
         rast_ax.set_title('Marking Raster')
         self.layout.addWidget(self.raster_plotter, 4, 2, 1, 6)
-
-        self.reset_marks_but = QPushButton('Reset Marks')
-        def reset_marks():
-            self.mark_plotter.clear()
-            self.control.clear_data()
-        self.reset_marks_but.clicked.connect(reset_marks)
-        self.layout.addWidget(self.reset_marks_but, 3, 1, 1, 1, Qt.AlignLeft)
 
         self.arena_controls = ArenaSelector('Arena Controls')
         self.layout.addWidget(self.arena_controls, 0, 2, 1, num_slides+3)
@@ -1336,7 +1340,7 @@ class MplCanvas(FigureCanvasQTAgg):
         """
         Initializes an MplCanvas to display Matplotlib plots via QTAgg
         """
-        self.fig = plt.Figure()
+        self.fig = plt.Figure(tight_layout=True)
         self.ax = self.fig.add_subplot(111)
         FigureCanvasQTAgg.__init__(self, self.fig)
         FigureCanvasQTAgg.setSizePolicy(self, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -1463,6 +1467,7 @@ class PtectApp:
             Path to the data folder (default is None).
         """
         self.app = QApplication(sys.argv)
+        self.app.setStyleSheet("QObject{font-size: 12pt;}")
         self.gui = PtectMainWindow(data_folder=data_folder)
         sys.exit(self.app.exec())
 
