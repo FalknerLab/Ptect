@@ -1,4 +1,5 @@
 import time
+import os
 from abc import abstractmethod, ABC
 from types import NoneType
 import cv2
@@ -9,6 +10,8 @@ from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
 from territorytools.utils import xy_to_cm, rotate_xy, intersect2d
 
+
+FIRA_MONO = os.path.normpath(os.path.abspath(os.path.pardir) + '/resources/fira_mono.ttf')
 
 def sleap_to_fill_pts(sleap_h5):
     """
@@ -793,7 +796,7 @@ class Peetector:
         text_xs = np.array([0.05, 1.05, 2.05, 0.05, 1.05]) * mask_w
         text_ys = np.array([0.95, 0.95, 0.95, 1.95, 1.95]) * mask_h
         text_labs = ['Smooth', 'Heat Thresh', 'Dilate', 'Filled', 'Mask Zones']
-        font = ImageFont.truetype('../resources/fira_mono.ttf', 32)
+        font = ImageFont.truetype(FIRA_MONO, 32)
         img_pil = Image.fromarray(concat_masks)
         draw = ImageDraw.Draw(img_pil)
         for x, y, l in zip(text_xs, text_ys, text_labs):
@@ -834,7 +837,7 @@ class Peetector:
         draw_sleap_pts(raw_frame, sleap_pnts)
 
         big_frame = cv2.resize(raw_frame, (1280, 960))
-        font = ImageFont.truetype('../resources/fira_mono.ttf', 48)
+        font = ImageFont.truetype(FIRA_MONO, 48)
         img_pil = Image.fromarray(big_frame)
         draw = ImageDraw.Draw(img_pil)
         draw.text((20, 10), 'Fill Points', font=font, fill=(100, 100, 200, 0))

@@ -26,7 +26,9 @@ def get_demo_google(google_drive_link, demo_fold='../tests/territorytools_demo')
     return abs_path
 
 def get_demo_folder():
-    return '../tests/territorytools_demo'
+    demo_path = '/tests/territorytools_demo'
+    full_path = os.path.normpath(os.path.abspath(os.path.pardir) + demo_path)
+    return full_path
 
 def run_demo(use_gdrive=False):
     """
@@ -40,6 +42,7 @@ def run_demo(use_gdrive=False):
     if use_gdrive:
         fold_link = 'https://drive.google.com/drive/folders/1e58QlTkZTtZICjvpynQGK6FA5y0IkVGT?usp=sharing'
         demo_path = get_demo_folder(fold_link)
+    # demo_path = os.path.abspath(demo_path)
     gui = PtectApp(data_folder=demo_path)
 
 if __name__ == '__main__':
