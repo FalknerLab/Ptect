@@ -83,9 +83,11 @@ class PtectController:
         self.data_folder = data_folder
         self.test = 0
         self.frame_num = 0
+        self.last_frame = 0
         self.t_frame = 0
         self.control_hz = 0
         self.save_path = None
+        self.show_steps = False
         self.valid = valid_dir(data_folder)
         if self.valid:
             t_files = find_territory_files(data_folder)
@@ -116,6 +118,7 @@ class PtectController:
             if len(dz_data) > 0:
                 self.set_param('deadzone', dz_data)
             self.last_t_frame = self.test_frame
+            self.total_frames = int(self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT))
 
     def set_frame(self, frame_num: int):
         """
@@ -126,10 +129,18 @@ class PtectController:
         frame_num : int
             Frame number to set.
         """
-        if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT):
+        if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT)-1:
             frame_num = 0
+        self.last_frame = self.frame_num
         self.frame_num = frame_num
         self.ptect.set_frame(frame_num)
+
+    def get_ptect_data(self):
+        return (self.metadata.get_val('Territory/ptect_smooth_kern'),
+                self.metadata.get_val('Territory/ptect_heat_thresh'),
+                self.metadata.get_val('Territory/ptect_dilate_kern'),
+                self.metadata.get_val('Territory/ptect_cool_thresh'),
+                self.metadata.get_val('Territory/ptect_time_thresh'))
 
     def get_data(self, which_data, time_win=None):
         """
@@ -156,7 +167,7 @@ class PtectController:
             return self.ptect.get_length()
 
         if which_data == 'length':
-            return self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT)
+            return self.total_frames
 
         if which_data == 'thermal':
             data_cop = np.copy(self.hot_data)
@@ -180,6 +191,9 @@ class PtectController:
         else:
             return None
 
+    def clear_data(self):
+        self.hot_data = np.empty((0, 3))
+
     def get_optical_frame(self):
         """
         Retrieves the current optical frame.
@@ -190,8 +204,15 @@ class PtectController:
             A tuple containing the return status and the frame.
         """
         op_frame_num = round(self.frame_num * (self.op_hz / self.control_hz))
-        if op_frame_num != self.frame_num:
-            self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
+        op_frame_num = min(op_frame_num, self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT) - 1)
+        op_frame_num = int(op_frame_num)
+        self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
+        # if op_frame_num != self.frame_num:
+        #     self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
+        # if self.frame_num - self.last_frame > 1:
+        #     self.optical_vid.set(cv2.CAP_PROP_POS_FRAMES, op_frame_num)
+        # elif self.frame_num == 0:
+        #     self.optical_vid.set(cv2.CAP_PROP_FRAME_COUNT, 0)
         ret, frame = self.optical_vid.read()
         for ind, sd in enumerate(self.sleap_data):
             not_nan = ~np.isnan(sd[0, :, op_frame_num])
@@ -220,19 +241,27 @@ class PtectController:
 
         c_im = np.empty((resize_h, resize_w, 3))
         ret, frame = self.get_optical_frame()
-        rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
+        if ret:
+            rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
+        else:
+            rs_raw = np.zeros((resize_h, resize_w // 2, 3))
         out_frame = None
         last_frame = self.t_frame
         new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
-        if new_frame > last_frame:
-            urine_data, out_frame, f_num = self.ptect.peetect_next_frame(return_frame=True)
-            rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
-            self.update_data(urine_data)
-            self.t_frame = new_frame
-            self.last_t_frame = out_frame
+        # if new_frame > last_frame:/
+        urine_data, out_frame, f_num = self.ptect.peetect_next_frame(return_frame=True)
+        rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
+        self.update_data(urine_data)
+        self.t_frame = new_frame
+        self.last_t_frame = out_frame
+
+        rs_urine = cv2.resize(self.last_t_frame, (resize_w // 2, resize_h))
+
+        if self.show_steps:
+            c_im = cv2.resize(self.last_t_frame, (resize_w, resize_h))
         else:
-            rs_urine = cv2.resize(self.last_t_frame, (resize_w // 2, resize_h))
-        c_im = np.hstack((rs_raw, rs_urine))
+            c_im = np.hstack((rs_raw, rs_urine))
+
         self.set_frame(self.frame_num + 1)
         return c_im.astype('uint8'), frame, out_frame
 
@@ -263,6 +292,12 @@ class PtectController:
             Value to set for the parameter.
         """
         match param:
+            case 'dilate':
+                self.ptect.dilate_kern = value
+                self.metadata.set_key_val('Territory/ptect_dilate_kern', value)
+            case 'smooth':
+                self.ptect.smooth_kern = value
+                self.metadata.set_key_val('Territory/ptect_smooth_kern', value)
             case 'heat_thresh':
                 self.ptect.heat_thresh = value
                 self.metadata.set_key_val('Territory/ptect_heat_thresh', value)
@@ -274,13 +309,16 @@ class PtectController:
                 self.metadata.set_key_val('Territory/ptect_time_thresh', value)
             case 'deadzone':
                 if type(value) == list:
-                    print(value)
                     self.ptect.add_dz(zone=value)
                 else:
                     pts = self.ptect.add_dz(num_pts=int(value))
                     self.metadata.set_key_val('Territory/deadzone', pts)
-            case 'frame_type':
-                self.ptect.frame_type = value
+            case 'show_steps':
+                self.show_steps = value
+                if self.show_steps:
+                    self.ptect.frame_type = 2
+                else:
+                    self.ptect.frame_type = 1
             case 'arena':
                 if value[0] == 'circle' or value[0] == 'rectangle':
                     c_x = value[1][0]
@@ -314,6 +352,8 @@ class PtectController:
         match md:
             case 'arena':
                 return self.metadata.get_val('Territory/thermal_center'), self.metadata.get_val('Territory/arena_type'), self.metadata.get_val('Territory/arena_data')
+            case 'deadzone':
+                return self.metadata.get_val('Territory/deadzone')
 
     def get_info(self):
         """
@@ -781,12 +821,17 @@ class PtectPreviewWindow(PtectWindow):
 
         self.control = ptect_cont
 
+        self.layout = QGridLayout()
+        self.prev_frame = QLabel()
+
+        self.add_controls()
+        init_params = self.control.get_ptect_data()
+        self.set_controls(init_params)
+
         print('Initializing GUI...')
         first_frames = self.control.read_next_frame(self.preview_frame_w, self.preview_frame_h)
         self.prev_im = first_frames[2]
 
-        self.layout = QGridLayout()
-        self.prev_frame = QLabel()
         q_im = QImage(first_frames[0],
                          self.preview_frame_w,
                          self.preview_frame_h,
@@ -796,8 +841,7 @@ class PtectPreviewWindow(PtectWindow):
         self.prev_frame.setScaledContents(True)
         self.layout.addWidget(self.prev_frame, 0, 0, 3, 2)
 
-        self.add_controls()
-        self.set_controls()
+
 
         self.setLayout(self.layout)
         self.prev_frame.show()
@@ -814,12 +858,15 @@ class PtectPreviewWindow(PtectWindow):
         """
         Adds control widgets to the preview window.
         """
-        params = ['heat_thresh', 'cool_thresh', 'time_thresh']
-        disp_names = ['Heat Thesh', 'Cool Thresh', 'Check Ahead # of Frames']
+        params = ['smooth', 'heat_thresh', 'dilate', 'cool_thresh', 'time_thresh']
+        disp_names = ['Smooth Size', 'Heat Thesh', 'Dilate/Erode Size', 'Cool Thresh', 'Check # of Frames']
+        mins = [1, 0, 1, 0, 0]
+        maxs = [15, 255, 15, 255, 100]
+
         num_slides = len(params)
         end_slides = 2+num_slides
-        for i, p, n in zip(range(2, end_slides), params, disp_names):
-            slider = SlideInputer(p, label=n)
+        for i, p, n, mn, mx in zip(range(2, end_slides), params, disp_names, mins, maxs):
+            slider = SlideInputer(p, label=n, low=mn, high=mx)
             self.layout.addWidget(slider, 2, i, 1, 1)
             self.thresh_controls.append(slider)
 
@@ -835,7 +882,8 @@ class PtectPreviewWindow(PtectWindow):
         load_but = QPushButton('Load Folder')
         def load_data():
             self.control = PtectController()
-            self.set_controls()
+            conts = self.control.get_ptect_data()
+            self.set_controls(slide_settings=conts)
         load_but.clicked.connect(load_data)
 
         run_but = QPushButton('Run and Save')
@@ -865,29 +913,37 @@ class PtectPreviewWindow(PtectWindow):
         scroller.setWidget(self.run_info)
         info_box.addWidget(scroller)
         info_gb.setLayout(info_box)
-        self.layout.addWidget(info_gb, 2, end_slides+1, 1, 1)
-
-        dz_but = QPushButton('Add Dead Zone')
-        dz_but.clicked.connect(self.set_dz)
-        self.layout.addWidget(dz_but, 1, 3, 1, 1)
-        self.dz_pt_box = QLineEdit()
-        self.dz_pt_box.setValidator(QIntValidator(3, 15))
-        self.layout.addWidget(self.dz_pt_box, 1, 4, 1, 1)
-        pt_lab = QLabel('# of Points')
-        self.layout.addWidget(pt_lab, 1, 5, 1, 1)
-
-        save_info_but = QPushButton('Save Info')
-        save_info_but.clicked.connect(self.control.save_info)
-        self.layout.addWidget(save_info_but, 1, 6, 1, 1)
+        self.layout.addWidget(info_gb, 2, 7, 1, 1)
 
         set_frame = QCheckBox('Show Steps')
         def set_frame_type():
             if set_frame.isChecked():
-                self.control.set_param('frame_type', 2)
+                self.control.set_param('show_steps', True)
             else:
-                self.control.set_param('frame_type', 0)
+                self.control.set_param('show_steps', False)
         set_frame.clicked.connect(set_frame_type)
         self.layout.addWidget(set_frame, 1, 2, 1, 1)
+
+        dz_but = QPushButton('Add Dead Zone')
+        dz_but.clicked.connect(self.set_dz)
+        self.layout.addWidget(dz_but, 1, 3, 1, 1)
+
+        self.dz_pt_box = QLineEdit()
+        self.dz_pt_box.setValidator(QIntValidator(3, 15))
+        pt_lab = QLabel('# of Points')
+        self.layout.addWidget(self.dz_pt_box, 1, 4, 1, 1)
+        self.layout.addWidget(pt_lab, 1, 5, 1, 1)
+
+        clear_dz_but = QPushButton('Clear Dead Zones')
+        def clear_dz():
+            self.control.set_param('deadzone', [])
+        clear_dz_but.clicked.connect(clear_dz)
+        self.layout.addWidget(clear_dz_but, 1, 6, 1, 1)
+
+        save_info_but = QPushButton('Save Info')
+        save_info_but.clicked.connect(self.control.save_info)
+        self.layout.addWidget(save_info_but, 1, 7, 1, 1)
+
 
         self.mark_plotter = PlotWidget()
         mark_ax = self.mark_plotter.gca()
@@ -910,8 +966,9 @@ class PtectPreviewWindow(PtectWindow):
         vel_ax.set_xlim(0, self.control.get_data('length'))
         vel_ax.set_title('Mouse Velocity (normalized)')
         vels = self.control.get_data('velocity')
-        vel_ax.plot(vels[0]/max(vels[0]), c=MOUSE_COLORS_MPL[0], label='Self')
-        vel_ax.plot(1 + vels[1]/max(vels[1]), c=MOUSE_COLORS_MPL[1], label='Other')
+        labels = ['Self', 'Other']
+        for i in range(len(vels)):
+            vel_ax.plot(i + vels[i]/max(vels[i]), c=MOUSE_COLORS_MPL[i], label=labels[i])
         vel_ax.legend()
         self.layout.addWidget(self.vel_plotter, 3, 2, 1, 6)
 
@@ -921,16 +978,43 @@ class PtectPreviewWindow(PtectWindow):
         rast_ax.set_title('Marking Raster')
         self.layout.addWidget(self.raster_plotter, 4, 2, 1, 6)
 
+        self.reset_marks_but = QPushButton('Reset Marks')
+        def reset_marks():
+            self.mark_plotter.clear()
+            self.control.clear_data()
+        self.reset_marks_but.clicked.connect(reset_marks)
+        self.layout.addWidget(self.reset_marks_but, 3, 1, 1, 1, Qt.AlignLeft)
+
         self.arena_controls = ArenaSelector('Arena Controls')
         self.layout.addWidget(self.arena_controls, 0, 2, 1, num_slides+3)
 
-    def set_controls(self):
+        self.scrubber = QSlider(Qt.Horizontal)
+        self.scrubber.setMinimum(1)
+        self.scrubber.setMaximum(self.control.get_data('length'))
+        def change_frame(val):
+            self.control.set_frame(val)
+        self.scrubber.valueChanged.connect(change_frame)
+        self.layout.addWidget(self.scrubber, 6, 0, 4, 1)
+
+        self.frame_counter = QLabel('Frame: ')
+        self.layout.addWidget(self.frame_counter, 6, 1, 1, 1)
+
+
+    def set_controls(self, slide_settings=None):
         """
         Sets the widget values for the preview window.
         """
         arena_data = self.control.get_metadata('arena')
+        dz = self.control.get_metadata('deadzone')
+        self.control.set_param('deadzone', dz)
         self.arena_controls.set_values(arena_data)
+        self.control.set_param('arena', self.arena_controls.get_arena_data())
         self.arena_controls.set_frame(self.control.test_frame)
+        if slide_settings is not None:
+            for s, val in zip(self.thresh_controls, slide_settings):
+                s.set_value(val)
+                self.control.set_param(s.id, val)
+
 
     def set_dz(self):
         """
@@ -953,6 +1037,11 @@ class PtectPreviewWindow(PtectWindow):
         if self.playing:
             self.update_plots()
             self.update_video()
+
+        f = self.control.frame_num
+        tot_f = self.control.get_data('length')
+        self.frame_counter.setText(f'Frame: {f} of {tot_f}')
+        self.scrubber.setValue(f)
 
     def draw_plots(self):
         """
@@ -1003,7 +1092,7 @@ class PtectPreviewWindow(PtectWindow):
 
 
 class SlideInputer(QGroupBox):
-    def __init__(self, name, label=None):
+    def __init__(self, name, label=None, low=0, high=255):
         """
         Initializes the SlideInputer.
 
@@ -1021,8 +1110,8 @@ class SlideInputer(QGroupBox):
         self.id = name
         slide_group = QVBoxLayout()
         self.slide = QSlider()
-        self.slide.setMinimum(0)
-        self.slide.setMaximum(255)
+        self.slide.setMinimum(low)
+        self.slide.setMaximum(high)
         self.slide.valueChanged.connect(self.update_ebox)
 
         self.ebox = QLineEdit()
@@ -1069,6 +1158,9 @@ class SlideInputer(QGroupBox):
             Tuple containing the slider ID and value.
         """
         return self.id, self.slide.value()
+
+    def set_value(self, value):
+        self.slide.setValue(value)
 
 
 class ArenaSelector(QGroupBox):
@@ -1171,6 +1263,7 @@ class ArenaSelector(QGroupBox):
             lab = QLabel('Number of Points')
             self.layout.addWidget(lab, 1, 0, 1, 1)
             self.sub_controls.append(pt_box)
+            self.sub_controls.append(lab)
         for knob in self.sub_controls:
             if type(knob) is QSlider:
                 knob.valueChanged.connect(self.update_settings)
@@ -1271,6 +1364,10 @@ class PlotWidget(QWidget):
         self.vbl = QVBoxLayout()
         self.vbl.addWidget(self.canvas)
         self.setLayout(self.vbl)
+        norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+        sm = matplotlib.cm.ScalarMappable(norm=norm)
+        self.color_bar = self.canvas.fig.colorbar(sm, ax=self.gca())
+        self.color_bar.ax.set_visible(False)
 
     def gca(self):
         """
@@ -1340,10 +1437,19 @@ class PlotWidget(QWidget):
         cmap : str, optional
             Colormap for the colorbar (default is 'summer').
         """
-        norm = matplotlib.colors.Normalize(vmin=min_val, vmax=max_val)
+        # for a in self.canvas.fig.axes:
+        #     if a.label == 'colorbar':
+        #         self.canvas.fig.axes.remove(a)
+        # self.color_bar.remove()
 
-        self.canvas.fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap),
-                     ax=self.gca(), orientation=orient, label=label)
+        self.color_bar.ax.set_visible(True)
+        norm = matplotlib.colors.Normalize(vmin=min_val, vmax=max_val)
+        sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+        self.color_bar.update_normal(sm)
+        self.color_bar.set_label(label)
+
+        # self.color_bar = self.canvas.fig.colorbar(sm,
+        #              ax=self.gca(), orientation=orient, label=label)
 
 
 class PtectApp:
