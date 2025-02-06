@@ -236,7 +236,7 @@ def show_urine_segmented_video(expand_urine, labels, window=300):
     # anim.save('urine3d.mp4', writer='ffmpeg', progress_callback=lambda i, n: print(f'Saving frame {i}/{n}'), fps=30)
 
 
-def circle_hist(x, y, bins=36, ax=None):
+def circle_hist(x, y, bins=36, ax=None, **kwargs):
     """
     Plots a circular histogram of the given data.
 
@@ -268,10 +268,10 @@ def circle_hist(x, y, bins=36, ax=None):
         ax.plot([0, p], [0, r_edge], ':k', linewidth=2)
 
     norm_vals = np.hstack((norm_vals, norm_vals[0]))
-    ax.plot(np.linspace(np.pi/6, 5*np.pi/6, 120), r_edge*np.ones(120), color=[0.5, 0.5, 0.5], linewidth=2)
-    ax.plot(np.linspace(5*np.pi/6, 1.5*np.pi, 120), r_edge*np.ones(120), color=[0.2, 0.6, 0.2], linewidth=2)
-    ax.plot(np.linspace(np.pi/6, -np.pi/2, 120), r_edge*np.ones(120), color=[0.8, 0.5, 0.2], linewidth=2)
-    ax.plot(bin_edges, norm_vals, color=[0, 0, 0.8], linewidth=4)
+    # ax.plot(np.linspace(np.pi/6, 5*np.pi/6, 120), r_edge*np.ones(120), color=[0.5, 0.5, 0.5], linewidth=2)
+    # ax.plot(np.linspace(5*np.pi/6, 1.5*np.pi, 120), r_edge*np.ones(120), color=[0.2, 0.6, 0.2], linewidth=2)
+    # ax.plot(np.linspace(np.pi/6, -np.pi/2, 120), r_edge*np.ones(120), color=[0.8, 0.5, 0.2], linewidth=2)
+    ax.plot(bin_edges, norm_vals, **kwargs)
     ax.set_rlabel_position(0)
     ax.set_xticklabels([])
     ax.set_yticks(ax.get_yticks()[:-1])
@@ -357,7 +357,7 @@ def plot_mean_sem(data_mat: np.ndarray, ax=None, col='r', x=None):
     ax.plot(x, mean - sem, c=col, linestyle='--')
 
 
-def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False, limits=((-32, 32), (-32, 32)), density=True, aspect='auto'):
+def territory_heatmap(x, y, ax=None, bins=16, vmin=None, vmax=None, colorbar=False, limits=((-32, 32), (-32, 32)), density=True, aspect='auto'):
     """
     Plots a heatmap of the given territory data.
 
@@ -393,8 +393,10 @@ def territory_heatmap(x, y, ax=None, bins=16, vmin=0, vmax=200, colorbar=False, 
 
     if density:
         im = im / len(x)
-        vmin = 0
-        vmax = np.max(im)
+        if vmin is None:
+            vmin = 0
+        if vmax is None:
+            vmax = np.max(im)
 
     if ax is not None:
         im_obj = ax.imshow(im, extent=(-32, 32, -32, 32), interpolation='none', origin='lower', vmin=vmin, vmax=vmax, cmap='plasma', aspect=aspect)
