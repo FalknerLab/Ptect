@@ -72,7 +72,7 @@ Territory:
   ptect_dilate_kern: 5
   ptect_heat_thresh: 70
   ptect_smooth_kern: 5
-  ptect_time_thresh: 20
+  ptect_time_thresh: 40
   self: Mouse1
   thermal_center:
   - 332
