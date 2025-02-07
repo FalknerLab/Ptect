@@ -245,7 +245,7 @@ class PtectController:
         new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
         # if new_frame > last_frame:/
         urine_data, out_frame, f_num = self.ptect.peetect_next_frame(return_frame=True)
-        rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
+        # rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
         self.update_data(urine_data)
         self.t_frame = new_frame
         self.last_t_frame = out_frame
@@ -546,7 +546,9 @@ class PtectWindow(QWidget):
         super().__init__()
         self.parent = parent
         self.control = ptect_cont
-        icon_path = os.path.abspath('../resources/ptect_icon.png')
+        this_path = os.path.abspath(__file__)
+        this_root = os.path.split(os.path.split(this_path)[0])[0]
+        icon_path = os.path.join(this_root, 'resources/ptect_icon.png')
         self.icon = QIcon(icon_path)
         self.setWindowIcon(self.icon)
 

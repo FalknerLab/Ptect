@@ -10,8 +10,9 @@ from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
 from territorytools.utils import xy_to_cm, rotate_xy, intersect2d
 
-
-FIRA_MONO = os.path.normpath(os.path.abspath(os.path.pardir) + '/resources/fira_mono.ttf')
+fm_path = os.path.abspath(__file__)
+fm_root = os.path.split(os.path.split(fm_path)[0])[0]
+FIRA_MONO = os.path.join(fm_root, 'resources/fira_mono.ttf')
 
 def sleap_to_fill_pts(sleap_h5):
     """
@@ -796,6 +797,7 @@ class Peetector:
         text_xs = np.array([0.05, 1.05, 2.05, 0.05, 1.05]) * mask_w
         text_ys = np.array([0.95, 0.95, 0.95, 1.95, 1.95]) * mask_h
         text_labs = ['Smooth', 'Heat Thresh', 'Dilate', 'Filled', 'Mask Zones']
+
         font = ImageFont.truetype(FIRA_MONO, 32)
         img_pil = Image.fromarray(concat_masks)
         draw = ImageDraw.Draw(img_pil)
