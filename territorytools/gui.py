@@ -19,14 +19,11 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
 
 
-matplotlib.use('QT5Agg')
-
 # Plotting Globals
 MOUSE_COLORS_BGR = []
 MOUSE_COLORS_MPL = ('tab:blue', 'tab:orange')
 for c in MOUSE_COLORS_MPL:
     MOUSE_COLORS_BGR.append(255*np.fliplr(np.array(matplotlib.colors.to_rgb(c))[None, :])[0])
-matplotlib.rcParams.update({'font.size': 12})
 
 def get_data_dialog():
     """
@@ -1468,6 +1465,8 @@ class PtectApp:
         data_folder : str, optional
             Path to the data folder (default is None).
         """
+        matplotlib.use('QT5Agg')
+        matplotlib.rcParams.update({'font.size': 12})
         self.app = QApplication(sys.argv)
         self.app.setStyleSheet("QObject{font-size: 12pt;}")
         self.gui = PtectMainWindow(data_folder=data_folder)
