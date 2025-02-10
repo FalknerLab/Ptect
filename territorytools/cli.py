@@ -5,7 +5,7 @@ from territorytools.demo import run_demo
 from territorytools.process import process_all_data
 
 
-
+print('imported cli')
 def main():
     """
     Main function to parse arguments and execute the appropriate action.
@@ -14,6 +14,7 @@ def main():
     -------
     None
     """
+    print('got to main')
     flags = ['-folder', '-o', '-gui', '-demo']
     defaults = [None, None, False, False]
     parser = argparse.ArgumentParser(prog='TerritoryTools',
