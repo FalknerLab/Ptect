@@ -1,11 +1,12 @@
 import os
+import sys
 import argparse
 from territorytools.gui import PtectApp
 from territorytools.demo import run_demo
 from territorytools.process import process_all_data
 
 
-print('imported cli')
+print('imported cli',file=sys.stdout)
 def main():
     """
     Main function to parse arguments and execute the appropriate action.
@@ -44,7 +45,7 @@ def main():
         out_path = None
         if args['outdir'] is not None:
             out_path = args['outdir']
-        print(f'Processing {args['folder']}...')
+        print(f'Processing {args['folder']}...', file=sys.stdout)
         process_all_data(args['folder'], out_path=out_path, skip_ptect=False)
     else:
         print('No data folder path provided')
@@ -63,5 +64,5 @@ def print_info():
 
 
 if __name__ == '__main__':
-    print('got to main')
+    print('got to main', file=sys.stdout)
     main()
