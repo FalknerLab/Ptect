@@ -62,4 +62,5 @@ def print_info():
 
 
 if __name__ == '__main__':
+    print('got to main')
     main()
