@@ -43,6 +43,7 @@ def main():
         out_path = None
         if args['outdir'] is not None:
             out_path = args['outdir']
+        print('Processing data...')
         process_all_data(args['folder'], out_path=out_path, skip_ptect=False)
     else:
         print('No data folder path provided')
