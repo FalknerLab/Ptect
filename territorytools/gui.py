@@ -18,7 +18,7 @@ import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
 
-
+print('test')
 # Plotting Globals
 MOUSE_COLORS_BGR = []
 MOUSE_COLORS_MPL = ('tab:blue', 'tab:orange')
