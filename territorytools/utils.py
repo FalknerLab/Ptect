@@ -1,6 +1,8 @@
 import os
 import h5py
 import numpy as np
+import imageio
+import cv2
 
 
 def find_rename_cam_videos(root_dir, cam_dict=None):
@@ -376,15 +378,39 @@ def rename_ri(root_dir):
             new_dir = new_dir.replace('intruder', 'other')
             os.rename(this_dir, new_dir)
 
+def make_video_gif(video_path, skip_n=1, orientation='rni'):
+    vid_read = imageio.get_reader(video_path)
+    vid_md = vid_read.get_meta_data()
+    num_frames = np.floor(vid_md['duration'] * vid_md['fps'])
+    out_path = os.path.split(video_path)[0]
+    out_path = os.path.join(out_path, "thermal_fast.gif")
+    io_writer = imageio.get_writer(out_path, mode="I")
+    inds = np.arange(num_frames, step=skip_n, dtype=int)
+    xs = [20, 260, 535]
+    ys = [450, 60, 450]
+    for i in inds:
+        print(i, inds[-1])
+        im = vid_read.get_data(i)
+        text_im = np.array(im)
+        labs = ['self', 'neutral', 'other']
+        match orientation:
+            case 'irn':
+                labs = ['other', 'self', 'neutral']
+            case 'nir':
+                labs = ['neutral', 'other', 'self']
+        for x, y, l in zip(xs, ys, labs):
+            cv2.putText(text_im, l, (x, y), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0))
+        io_writer.append_data(text_im)
+    io_writer.close()
 
 if __name__ == '__main__':
     # root_dir = 'D:/ptect_dataset/testing/kpms'
     # for f in os.listdir(root_dir):
     #     file_n = os.path.join(root_dir, f)
-    fix_sleap_h5('D:\\ptect_dataset\\AggExp\\data\\'
-                 'aggexppilot_self_dab019_other_dab013_day_1_block_0_orientation_rni_20250127_125723\\'
-                 'aggexppilot_self_dab019_other_dab013_day_1_block_0_orientation_rni_20250127_125723_top_old.h5',
-                 block=0, orientation='rni', cent_xy=(707, 541))
+    # fix_sleap_h5('D:\\ptect_dataset\\AggExp\\data\\'
+    #              'aggexppilot_self_dab019_other_dab013_day_1_block_0_orientation_rni_20250127_125723\\'
+    #              'aggexppilot_self_dab019_other_dab013_day_1_block_0_orientation_rni_20250127_125723_top_old.h5',
+    #              block=0, orientation='rni', cent_xy=(707, 541))
 
     # root_dir = 'D:/ptect_dataset/kpms/grid_movies'
     # for f in os.listdir(root_dir):
@@ -397,4 +423,6 @@ if __name__ == '__main__':
     #         os.system(command)
 
     # rename_ri('D:\\ptect_dataset\\AggExp\\data')
-    # find_rename_cam_videos('D:\\ptect_dataset\\AggExp\\data', cam_dict={'top':'top', 'side1':'side1', 'side2':'side2', 'side3':'side3'})
+    # find_rename_cam_folders('D:\\ptect_dataset\\AggExp\\real\\group_form')
+    # find_rename_cam_videos('D:\\ptect_dataset\\AggExp\\real\\group_form', cam_dict={'top':'top', 'side1':'side1', 'side2':'side2', 'side3':'side3'})
+    make_video_gif("D:\\ptect_dataset\\AggExp\\real\\group_form\\aggexpgf_self_dab020_other_dab025_day_0_block_0_orientation_rni_20250203_112919\\thermal\\AggExpGF_self_DAB000_other_DAB000_day_0_block_0_orientation_rni_thermal.avi", 10000)

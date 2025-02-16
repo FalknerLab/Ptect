@@ -82,7 +82,6 @@ class PtectController:
         self.test = 0
         self.frame_num = 0
         self.last_frame = 0
-        self.t_frame = 0
         self.control_hz = 0
         self.save_path = None
         self.show_steps = False
@@ -92,7 +91,6 @@ class PtectController:
             self.metadata = MDcontroller(t_files['ptmetadata.yml'])
             self.op_hz = self.metadata.get_val('Territory/optical_hz')
             self.t_offset_frames = self.metadata.get_val('Territory/thermal_offset')
-            self.t_frame = self.t_offset_frames
             self.therm_hz = self.metadata.get_val('Territory/thermal_hz')
             orient = self.metadata.get_val('Territory/orientation')
             self.control_hz = max(self.op_hz, self.therm_hz)
@@ -110,7 +108,7 @@ class PtectController:
             t_px_per_cm = self.metadata.get_val('Territory/thermal_px_per_cm')
             self.therm_vid = t_files['thermal.avi']
             self.ptect = Peetector(self.therm_vid, t_files['thermal.h5'], cent_xy=therm_cent, px_per_cm=t_px_per_cm,
-                                   rot_ang=orient, start_frame=self.t_frame)
+                                   rot_ang=orient, start_frame=self.t_offset_frames, optical_slp=None, use_op=False)
             self.test_frame = self.ptect.read_frame()[1]
             dz_data = self.metadata.get_val('Territory/deadzone')
             if len(dz_data) > 0:
@@ -130,8 +128,9 @@ class PtectController:
         if frame_num > self.optical_vid.get(cv2.CAP_PROP_FRAME_COUNT)-1:
             frame_num = 0
         self.last_frame = self.frame_num
+        new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
         self.frame_num = frame_num
-        self.ptect.set_frame(frame_num)
+        self.ptect.set_frame(new_frame)
 
     def get_ptect_data(self):
         return (self.metadata.get_val('Territory/ptect_smooth_kern'),
@@ -237,14 +236,11 @@ class PtectController:
             rs_raw = cv2.resize(frame, (resize_w // 2, resize_h))
         else:
             rs_raw = np.zeros((resize_h, resize_w // 2, 3))
-        out_frame = None
-        last_frame = self.t_frame
-        new_frame = round(self.frame_num * (self.therm_hz / self.control_hz)) + self.t_offset_frames
+
         # if new_frame > last_frame:/
         urine_data, out_frame, f_num = self.ptect.peetect_next_frame(return_frame=True)
         # rs_urine = cv2.resize(out_frame, (resize_w // 2, resize_h))
         self.update_data(urine_data)
-        self.t_frame = new_frame
         self.last_t_frame = out_frame
 
         rs_urine = cv2.resize(self.last_t_frame, (resize_w // 2, resize_h))
@@ -622,6 +618,12 @@ class PtectMainWindow(QMainWindow):
         self.data_win.hide()
         self.preview.show()
 
+    # def reset(self):
+    #     self.preview.deleteLater()
+    #     control = PtectController(data_folder=None)
+    #     self.preview = PtectPreviewWindow(control, parent=self)
+    #     self.preview.show()
+
 
 class PtectDataWindow(PtectWindow):
     def __init__(self, ptect_cont, parent=None):
@@ -655,7 +657,7 @@ class PtectDataWindow(PtectWindow):
         data_files = self.control.get_file_list()
         ptect_npz = data_files['ptect.npz']
         if ptect_npz is not None:
-            data = self.control.load_output()
+            data = self.control.load_output()[0]
             xy_plot = PlotWidget(self)
             mark_plot = PlotWidget(self)
             vel_plot = PlotWidget(self)
@@ -875,9 +877,15 @@ class PtectPreviewWindow(PtectWindow):
 
         load_but = QPushButton('Load Folder')
         def load_data():
-            self.control = PtectController()
-            conts = self.control.get_ptect_data()
-            self.set_controls(slide_settings=conts)
+            control = PtectController(data_folder=None)
+            self.control = control
+            conts = control.get_ptect_data()
+            self.set_controls(conts)
+            save_info_but = QPushButton('Save Info')
+            save_info_but.clicked.connect(self.control.save_info)
+            self.layout.addWidget(save_info_but, 1, 7, 1, 1)
+            # self.parent.reset()
+
         load_but.clicked.connect(load_data)
 
         self.reset_marks_but = QPushButton('Reset Marks')

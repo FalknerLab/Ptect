@@ -1,6 +1,7 @@
 import time
 import os
 from abc import abstractmethod, ABC
+from datetime import datetime
 from types import NoneType
 import cv2
 import h5py
@@ -32,7 +33,7 @@ def sleap_to_fill_pts(sleap_h5):
         locations = f["tracks"][:].T
     t, d1, d2, num_mice = np.shape(locations)
     fill_pts = []
-    last_pts = np.empty(num_mice * d1, dtype=np.ndarray)
+    last_pts = [[None, None]]
     for i in range(t):
         move_pts = np.moveaxis(locations[i], 0, 2)
         all_xy = np.reshape(move_pts, (2, num_mice * d1))
@@ -113,6 +114,16 @@ def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
     out_mask = out_mask.astype('uint8')
     return out_mask
 
+def map_xys(x0, y0, cent_x, cent_y, new_cent_x, new_cent_y, op_w, op_h, t_w, t_h):
+    rel_xs = x0 - cent_x
+    rel_ys = y0 - cent_y
+    rel_prop_x = (rel_xs / op_w) * t_w
+    rel_prop_y = (rel_ys / op_h) * t_h
+    xs = new_cent_x + rel_prop_x
+    ys = new_cent_y + rel_prop_y
+    return xs, ys
+
+
 class PtectPipe(ABC):
     """
     Abstract base class for a PtectPipe to pass data through and save in buffer.
@@ -143,8 +154,8 @@ class PtectPipe(ABC):
 
 class Peetector:
     def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, check_frames=1,
-                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=40, v_mask=None, frame_type=None, radius=30,
-                 rot_ang=0, start_frame=0):
+                 hot_thresh=70, cold_thresh=30, s_kern=5, di_kern=5, hz=30, v_mask=None, frame_type=None, radius=30,
+                 rot_ang=0, start_frame=0, optical_slp=None, use_op=False, op_center_x=707, op_center_y=541):
         """
         Initializes the Peetector.
 
@@ -215,6 +226,25 @@ class Peetector:
         self.output_buffer = ()
         self.arena_shape = 'circle'
 
+        self.optical_slp = optical_slp
+        self.op_fill_pts = None
+        if optical_slp is not None:
+            self.op_fill_pts = sleap_to_fill_pts(optical_slp)
+            proj_pts = []
+            for pts in self.op_fill_pts:
+                if pts[0][0] is not None:
+                    xs, ys = map_xys(pts[:, 0], pts[:, 1], op_center_x, op_center_y, self.arena_cnt[0], self.arena_cnt[1],
+                                     self.width, self.height, self.arena_cnt[0], self.arena_cnt[1])
+                    proj_pts.append(np.vstack((xs, ys)).T.astype(int))
+                else:
+                    proj_pts.append(pts)
+            # pad_ar = np.empty((0, 2), dtype=np.ndarray)
+            ds_op_inds = np.linspace(0, len(self.op_fill_pts), len(self.fill_pts) - start_frame).astype(np.int8)
+            op_fill_pts = [proj_pts[i] for i in ds_op_inds]
+            pad_op_fills = np.repeat([[None, None]], start_frame)
+            self.op_fill_pts = np.hstack((pad_op_fills, op_fill_pts))
+        self.use_op = use_op
+
 
     def get_length(self):
         """
@@ -248,10 +278,6 @@ class Peetector:
         frame_num : int
             Frame number to set.
         """
-        # if frame_num >= self.total_frames-1:
-        #     # self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, 1)
-        #     # self.vid_obj = cv2.VideoCapture(self.thermal_vid)
-        # else:
         self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
         self.current_frame = frame_num
 
@@ -299,27 +325,29 @@ class Peetector:
         all_cool_data = np.empty((0, 3))
 
         frame_c = 0
+        update_every = 1000
         tot_frames = end_frame - start_frame
-        # t0 = time.time()
+        t0 = time.time()
         while self.current_frame < end_frame:
-            if verbose and frame_c % 1000 == 0:
-                print(f'Running Ptect on frame {frame_c} of {tot_frames}...')
-
+            if verbose and frame_c % update_every == 0 and frame_c > 0:
+                t1 = time.time()
+                time_diff = (t1 - t0)
+                fps = update_every / time_diff
+                time_left = (end_frame - self.current_frame) / fps
+                time_str = time.strftime('%H:%M:%S', time.gmtime(time_left))
+                print(f'Running Ptect on frame {frame_c} of {tot_frames}. Current fps: {fps:.2f} Time left: {time_str}')
+                t0 = t1
+                # print(frame_c, end_frame, fps, time_left)
+                # print(f'Running Ptect on frame {frame_c} of {tot_frames}...')
             if pipe is not None:
                 pipe.send((frame_c, tot_frames))
                 is_done = pipe.read()
                 if is_done:
                     return None
-
             p_out = self.peetect_next_frame()[0]
-
             all_hot_data = np.vstack((all_hot_data, p_out[0]))
             all_cool_data = np.vstack((all_cool_data, p_out[1]))
-
             frame_c += 1
-            # t1 = time.time()
-            # print(t1-t0)
-            # t0 = t1
 
         hot_half = np.hstack((all_hot_data, np.ones_like(all_hot_data[:, 0][:, None])))
         cool_half = np.hstack((all_cool_data, np.zeros_like(all_cool_data[:, 0][:, None])))
@@ -413,6 +441,10 @@ class Peetector:
         cool_thresh = self.cool_thresh
         rot_ang = self.rot_ang
         fill_pnts = self.fill_pts
+        if self.use_op:
+            fill_pnts = []
+            for o, t in zip(self.fill_pts, self.op_fill_pts):
+                fill_pnts.append(np.vstack((o, t)))
 
         # collect frame times with urine and urine xys
         urine_evts_times = []
@@ -710,11 +742,12 @@ class Peetector:
         """
         cop_f = frame.copy()
         for p in pnts:
-            px = int(p[0])
-            py = int(p[1])
-            if 0 < px < width and 0 < py < height:
-                if frame[py, px] > 0:
-                    cv2.floodFill(cop_f, None, (px, py), 0)
+            if p[0] is not None:
+                px = int(p[0])
+                py = int(p[1])
+                if 0 < px < width and 0 < py < height:
+                    if frame[py, px] > 0:
+                        cv2.floodFill(cop_f, None, (px, py), 0)
         return cop_f
 
     def add_dz(self, zone=None, num_pts=0):
@@ -868,8 +901,9 @@ def draw_zones(raw_frame, shape, cent_x, cent_y, arena_data, dead_zones):
 
 def draw_sleap_pts(raw_frame, sleap_pnts):
     for s in sleap_pnts:
-        slp_pnt = s.astype(int)
-        cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
+        if s[0] is not None:
+            slp_pnt = s.astype(int)
+            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
 
 
 class PBuffer:
