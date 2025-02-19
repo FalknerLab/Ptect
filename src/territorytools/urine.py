@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
-from .utils import rotate_xy, intersect2d
+from utils import rotate_xy, intersect2d
 
 
 FIRA_MONO = str(resources.files('src.resources').joinpath('assets').joinpath('fira_mono.ttf'))

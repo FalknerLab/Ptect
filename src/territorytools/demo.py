@@ -1,6 +1,6 @@
 import gdown
 import os
-from territorytools.gui import PtectApp
+from gui import PtectApp
 from importlib import resources
 
 
@@ -27,7 +27,7 @@ def get_demo_google(google_drive_link, demo_fold='../tests/territorytools_demo')
     return abs_path
 
 def get_demo_folder():
-    demo_path = resources.files('resources').joinpath('demo')
+    demo_path = resources.files('src.resources').joinpath('demo')
     print(demo_path)
     # here = os.path.abspath(__file__)
     # here_root = os.path.split(os.path.split(here)[0])[0]

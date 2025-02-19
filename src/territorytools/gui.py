@@ -8,12 +8,12 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
-from .process import process_all_data, valid_dir, find_territory_files
-from .urine import Peetector, PtectPipe, split_urine_data, proj_urine_across_time
-from .ttclasses import MDcontroller
-from .plotting import add_territory_circle, territory_heatmap
-from .behavior import get_territory_data
-from .utils import intersect2d
+from process import process_all_data, valid_dir, find_territory_files
+from urine import Peetector, PtectPipe, split_urine_data, proj_urine_across_time
+from ttclasses import MDcontroller
+from plotting import add_territory_circle, territory_heatmap
+from behavior import get_territory_data
+from utils import intersect2d
 import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
@@ -539,7 +539,7 @@ class PtectWindow(QWidget):
         super().__init__()
         self.parent = parent
         self.control = ptect_cont
-        icon_path = str(resources.files('resources').joinpath('assets').joinpath('ptect_icon.png'))
+        icon_path = str(resources.files('src.resources').joinpath('assets').joinpath('ptect_icon.png'))
         self.icon = QIcon(icon_path)
         self.setWindowIcon(self.icon)
 
@@ -733,14 +733,14 @@ class PtectRunWindow(PtectWindow):
         self.setFixedSize(420, 120)
         self.setWindowTitle('Running Ptect...')
 
-        finish_i_path = str(resources.files('resources').joinpath('assets').joinpath('finish_icon.png'))
+        finish_i_path = str(resources.files('src.resources').joinpath('assets').joinpath('finish_icon.png'))
         self.finish_w = QLabel(self)
         self.finish_w.setPixmap(QPixmap(finish_i_path))
         self.finish_w.move(340, 60)
 
         self.message = QLabel('Ptecting... On Frame:', self)
         self.message.setGeometry(10, 10, 400, 30)
-        self.mouse_i_path = str(resources.files('resources').joinpath('assets').joinpath('mouse_icon.png'))
+        self.mouse_i_path = str(resources.files('src.resources').joinpath('assets').joinpath('mouse_icon.png'))
         self.icon_w = QLabel(self)
         self.icon_w.setPixmap(QPixmap(self.mouse_i_path))
         self.icon_w.move(20, 55)
