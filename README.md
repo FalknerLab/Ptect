@@ -1,6 +1,6 @@
-![](resources/ptect_banner.png)
+![](resources/assets/ptect_banner.png)
 
-![](resources/gui_demo.gif)
+![](resources/assets/gui_demo.gif)
 
 # Prerequisites
 1. A working SLEAP inference/proofreading pipeline for both optical and thermal data
@@ -46,7 +46,7 @@ data = tt.process.process_all_data(your_folder)
 ### Clone repo to local
 `git clone https://github.com/FalknerLab/Ptect.git`
 ### Create TerritoryTools environment and install packages
-`conda create --file environment.yml`
+`conda env create --file environment.yml`
 ### Activate TerritoryTools environment before running code
 `conda activate TerritoryTools`
 
