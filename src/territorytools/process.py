@@ -5,9 +5,9 @@ import h5py
 import numpy as np
 import pynwb as nwb
 
-from behavior import get_territory_data, interp_behavs, compute_preferences, make_design_matrix
-from utils import rotate_xy
-from urine import Peetector
+from src.territorytools.behavior import get_territory_data, interp_behavs, compute_preferences, make_design_matrix
+from src.territorytools.utils import rotate_xy
+from src.territorytools.urine import Peetector
 
 
 def process_all_data(run_folder_root, show_all=False, start_t_sec=0, skip_ptect=True, out_path=None, verbose=True):

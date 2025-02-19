@@ -1,6 +1,6 @@
 import gdown
 import os
-from gui import PtectApp
+from src.territorytools.gui import PtectApp
 from importlib import resources
 
 

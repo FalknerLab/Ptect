@@ -1,8 +1,8 @@
 import os
 import argparse
-from gui import PtectApp
-from demo import run_demo
-from process import process_all_data
+from src.territorytools.gui import PtectApp
+from src.territorytools.demo import run_demo
+from src.territorytools.process import process_all_data
 
 
 def main():
