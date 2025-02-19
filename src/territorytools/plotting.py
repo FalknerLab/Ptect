@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.animation import FuncAnimation
 from matplotlib import cm
-from territorytools.behavior import get_diadic_behavior, compute_over_spatial_bin, avg_angs
-from territorytools.urine import urine_across_time
+from .behavior import get_diadic_behavior, compute_over_spatial_bin, avg_angs
+from .urine import urine_across_time
 
 
 def add_territory_circle(ax, block=None, rad=30.48, facecolor=None):

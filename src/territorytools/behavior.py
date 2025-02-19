@@ -1,5 +1,5 @@
-from territorytools.urine import urine_across_time
-from territorytools.utils import xy_to_cm_vec, rotate_xy_vec
+from .urine import urine_across_time
+from .utils import xy_to_cm_vec, rotate_xy_vec
 import numpy as np
 from scipy.stats import zscore
 import warnings

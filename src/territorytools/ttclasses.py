@@ -1,4 +1,4 @@
-import territorytools.behavior as tdt
+from src import territorytools as tdt
 import json
 import os
 import yaml

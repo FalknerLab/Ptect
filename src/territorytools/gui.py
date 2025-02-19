@@ -8,12 +8,12 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
-from territorytools.process import process_all_data, valid_dir, find_territory_files
-from territorytools.urine import Peetector, PtectPipe, split_urine_data, proj_urine_across_time
-from territorytools.ttclasses import MDcontroller
-from territorytools.plotting import add_territory_circle, territory_heatmap
-from territorytools.behavior import get_territory_data
-from territorytools.utils import intersect2d
+from .process import process_all_data, valid_dir, find_territory_files
+from .urine import Peetector, PtectPipe, split_urine_data, proj_urine_across_time
+from .ttclasses import MDcontroller
+from .plotting import add_territory_circle, territory_heatmap
+from .behavior import get_territory_data
+from .utils import intersect2d
 import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt

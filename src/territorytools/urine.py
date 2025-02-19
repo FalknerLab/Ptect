@@ -8,10 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
-from territorytools.utils import xy_to_cm, rotate_xy, intersect2d
+from .utils import rotate_xy, intersect2d
 
 
-FIRA_MONO = str(resources.files('resources').joinpath('assets').joinpath('fira_mono.ttf'))
+FIRA_MONO = str(resources.files('src.resources').joinpath('assets').joinpath('fira_mono.ttf'))
 
 def sleap_to_fill_pts(sleap_h5):
     """
