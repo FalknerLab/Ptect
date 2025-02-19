@@ -4,7 +4,7 @@ from src.territorytools.gui import PtectApp
 from importlib import resources
 
 
-def get_demo_google(google_drive_link, demo_fold='../tests/territorytools_demo'):
+def get_demo_google(google_drive_link, demo_fold=''):
     """
     Downloads demo data from a Google Drive link and saves it to a specified folder.
 
@@ -28,10 +28,6 @@ def get_demo_google(google_drive_link, demo_fold='../tests/territorytools_demo')
 
 def get_demo_folder():
     demo_path = resources.files('src.resources').joinpath('demo')
-    print(demo_path)
-    # here = os.path.abspath(__file__)
-    # here_root = os.path.split(os.path.split(here)[0])[0]
-    # full_path = os.path.join(here_root, demo_path)
     return str(demo_path)
 
 def run_demo(use_gdrive=False):
