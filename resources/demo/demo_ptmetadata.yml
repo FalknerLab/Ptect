@@ -78,5 +78,5 @@ Territory:
   - 332
   - 233
   thermal_hz: 40
-  thermal_offset: 0
+  thermal_offset: 10
   thermal_px_per_cm: 7.2178
