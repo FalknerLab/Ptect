@@ -1,7 +1,6 @@
 import time
-import os
 from abc import abstractmethod, ABC
-from datetime import datetime
+from importlib import resources
 from types import NoneType
 import cv2
 import h5py
@@ -11,9 +10,8 @@ from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
 from territorytools.utils import xy_to_cm, rotate_xy, intersect2d
 
-fm_path = os.path.abspath(__file__)
-fm_root = os.path.split(os.path.split(fm_path)[0])[0]
-FIRA_MONO = os.path.join(fm_root, 'resources/fira_mono.ttf')
+
+FIRA_MONO = str(resources.files('resources').joinpath('assets').joinpath('fira_mono.ttf'))
 
 def sleap_to_fill_pts(sleap_h5):
     """
