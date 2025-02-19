@@ -423,6 +423,6 @@ if __name__ == '__main__':
     #         os.system(command)
 
     # rename_ri('D:\\ptect_dataset\\AggExp\\data')
-    # find_rename_cam_folders('D:\\ptect_dataset\\AggExp\\real\\group_form')
-    # find_rename_cam_videos('D:\\ptect_dataset\\AggExp\\real\\group_form', cam_dict={'top':'top', 'side1':'side1', 'side2':'side2', 'side3':'side3'})
-    make_video_gif("D:\\ptect_dataset\\AggExp\\real\\group_form\\aggexpgf_self_dab020_other_dab025_day_0_block_0_orientation_rni_20250203_112919\\thermal\\AggExpGF_self_DAB000_other_DAB000_day_0_block_0_orientation_rni_thermal.avi", 10000)
+    find_rename_cam_folders('D:\\ptect_dataset\\AggExp\\real\\runs')
+    find_rename_cam_videos('D:\\ptect_dataset\\AggExp\\real\\runs', cam_dict={'top':'top', 'side1':'side1', 'side2':'side2', 'side3':'side3'})
+    # make_video_gif("D:\\ptect_dataset\\AggExp\\real\\group_form\\aggexpgf_self_dab020_other_dab025_day_0_block_0_orientation_rni_20250203_112919\\thermal\\AggExpGF_self_DAB000_other_DAB000_day_0_block_0_orientation_rni_thermal.avi", 10000)

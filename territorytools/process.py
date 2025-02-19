@@ -483,7 +483,7 @@ def make_nwb_yamls(root_dir, key_fmt, key_del='_', val_del='_'):
         if os.path.isdir(os.path.join(root_dir, f)):
             append_dict = make_dict(key_fmt, f, key_del=key_del, val_del=val_del)
             yaml_file = os.path.join(root_dir, f, fr'{f}_metadata.yaml')
-            shutil.copy('../resources/nwb_metadata.yaml', yaml_file)
+            shutil.copy('../resources/templates/nwb_metadata.yaml', yaml_file)
             yaml_obj = open(yaml_file, 'r')
             yaml_dict = yaml.safe_load(yaml_obj)
             unique_keys = np.unique(list(yaml_dict.keys()) + list(append_dict.keys())).astype(list)
