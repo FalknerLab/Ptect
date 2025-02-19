@@ -11,7 +11,7 @@ from PIL import ImageFont, ImageDraw, Image
 from src.territorytools.utils import rotate_xy, intersect2d
 
 
-FIRA_MONO = str(resources.files('src.resources').joinpath('assets').joinpath('fira_mono.ttf'))
+FIRA_MONO = str(resources.files('resources').joinpath('assets').joinpath('fira_mono.ttf'))
 
 def sleap_to_fill_pts(sleap_h5):
     """
