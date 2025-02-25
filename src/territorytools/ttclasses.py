@@ -1,4 +1,3 @@
-from src import territorytools as tdt
 import json
 import os
 import yaml
@@ -109,7 +108,10 @@ class BasicRun:
         info_dict : dict
             Metadata associated with the run.
         """
-        self.info = MDcontroller(info_dict)
+        if type(info_dict) is MDcontroller:
+            self.info = info_dict
+        else:
+            self.info = MDcontroller(info_dict)
         self.data = data
 
     def get_key_val(self, key_name: str, nest_dict=None):
@@ -150,33 +152,6 @@ class BasicRun:
         """
         # self.info[key_name] = key_val
         self.info.set_key_val(key_name, key_val)
-
-
-class RunFromFile(BasicRun):
-    """
-    Represents a run created from a file.
-
-    Methods
-    -------
-    __init__(file_name, info_dict, rot_offset=0, num_frames=0)
-        Initializes a RunFromFile instance.
-    """
-    def __init__(self, file_name, info_dict, rot_offset=0, num_frames=0):
-        """
-        Initializes a RunFromFile instance.
-
-        Parameters
-        ----------
-        file_name : str
-            Path to the file.
-        info_dict : dict
-            Metadata associated with the run.
-        rot_offset : int, optional
-            Rotation offset (default is 0).
-        num_frames : int, optional
-            Number of frames (default is 0).
-        """
-        super().__init__(tdt.get_territory_data(file_name, rot_offset, num_frames), info_dict)
 
 
 class ComputeRun(BasicRun):
