@@ -5,8 +5,8 @@ from matplotlib.animation import FuncAnimation
 from matplotlib import cm
 from sklearn.metrics import r2_score
 
-from behavior import get_diadic_behavior, compute_over_spatial_bin, avg_angs
-from urine import urine_across_time
+from .behavior import get_diadic_behavior, compute_over_spatial_bin, avg_angs
+from .urine import urine_across_time
 
 
 def add_territory_circle(ax, block=None, rad=30.48, facecolor=None):

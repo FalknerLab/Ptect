@@ -1,8 +1,9 @@
 import os
 import argparse
-from gui import PtectApp
-from demo import run_demo
-from urine import Peetector, valid_ptect_fold
+
+from .gui import PtectApp
+from .demo import run_demo
+from .urine import Peetector, valid_ptect_fold
 
 
 def main():

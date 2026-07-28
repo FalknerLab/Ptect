@@ -1,4 +1,4 @@
-name: TerritoryTools
+name: Ptect
 
 dependencies:
   - python>=3.8

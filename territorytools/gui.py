@@ -7,13 +7,14 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtWidgets
 from matplotlib.collections import PathCollection
-from urine import Peetector, PtectPipe, valid_ptect_fold
-from ttclasses import MDcontroller
-from plotting import add_territory_circle, plot_marking
-from utils import intersect2d
 import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
+
+from .urine import Peetector, PtectPipe, valid_ptect_fold
+from .ttclasses import MDcontroller
+from .plotting import add_territory_circle, plot_marking
+from .utils import intersect2d
 
 
 # Plotting Globals
