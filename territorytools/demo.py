@@ -2,7 +2,7 @@ from importlib import resources
 import gdown
 import os
 
-from .gui import PtectApp
+from territorytools.gui import PtectApp
 
 
 def get_demo_google(google_drive_link, demo_fold=''):

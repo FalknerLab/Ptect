@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from PIL import ImageFont, ImageDraw, Image
 
-from .ttclasses import MDcontroller
-from .utils import rotate_xy, find_files
+from territorytools.ttclasses import MDcontroller
+from territorytools.utils import rotate_xy, find_files
 
 
 FIRA_MONO = str(resources.files('resources').joinpath('assets').joinpath('fira_mono.ttf'))

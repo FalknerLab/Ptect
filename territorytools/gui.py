@@ -11,10 +11,10 @@ import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
 
-from .urine import Peetector, PtectPipe, valid_ptect_fold
-from .ttclasses import MDcontroller
-from .plotting import add_territory_circle, plot_marking
-from .utils import intersect2d
+from territorytools.urine import Peetector, PtectPipe, valid_ptect_fold
+from territorytools.ttclasses import MDcontroller
+from territorytools.plotting import add_territory_circle, plot_marking
+from territorytools.utils import intersect2d
 
 
 # Plotting Globals

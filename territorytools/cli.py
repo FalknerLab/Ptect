@@ -1,9 +1,9 @@
 import os
 import argparse
 
-from .gui import PtectApp
-from .demo import run_demo
-from .urine import Peetector, valid_ptect_fold
+from territorytools.gui import PtectApp
+from territorytools.demo import run_demo
+from territorytools.urine import Peetector, valid_ptect_fold
 
 
 def main():
