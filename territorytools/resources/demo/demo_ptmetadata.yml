@@ -1,0 +1,53 @@
+arena_data: 193
+arena_type: circle
+deadzone:
+  - - - 33
+      - 47
+    - - 283
+      - 174
+    - - 314
+      - 165
+    - - 339
+      - 164
+    - - 354
+      - 178
+    - - 570
+      - 26
+    - - 593
+      - 58
+    - - 363
+      - 209
+    - - 362
+      - 230
+    - - 344
+      - 248
+    - - 331
+      - 257
+    - - 339
+      - 470
+    - - 312
+      - 468
+    - - 308
+      - 256
+    - - 289
+      - 246
+    - - 276
+      - 226
+    - - 272
+      - 207
+    - - 21
+      - 69
+experiment_id: Demo
+num_mice: 2
+rotation: 0
+mouse_ids: [Mouse1, Mouse2]
+ptect_cool_thresh: 15
+ptect_dilate_kern: 5
+ptect_heat_thresh: 15
+ptect_smooth_kern: 3
+thermal_center:
+- 332
+- 233
+thermal_hz: 30
+thermal_offset: 10
+thermal_px_per_cm: 7.2178

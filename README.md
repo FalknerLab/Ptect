@@ -1,6 +1,6 @@
-![](src/resources/assets/ptect_banner.png)
+![](territorytools/resources/assets/ptect_banner.png)
 
-![](src/resources/assets/gui_demo.gif)
+![](territorytools/resources/assets/gui_demo.gif)
 
 # Prerequisites
 1. A working SLEAP inference/proofreading pipeline for both optical and thermal data

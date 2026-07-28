@@ -1,0 +1,1158 @@
+from abc import abstractmethod, ABC
+from multiprocessing import Pool
+from importlib import resources
+import cv2
+import h5py
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN
+from PIL import ImageFont, ImageDraw, Image
+
+from ttclasses import MDcontroller
+from utils import rotate_xy, find_files
+
+
+FIRA_MONO = str(resources.files('resources').joinpath('assets').joinpath('fira_mono.ttf'))
+
+
+def valid_ptect_fold(root_dir: str):
+    """
+    Checks if the given directory contains all required territory dataset files.
+
+    Parameters
+    ----------
+    root_dir : str
+        Directory to check.
+
+    Returns
+    -------
+    bool
+        True if the directory contains all required files, False otherwise.
+    """
+    target_sufs = ['thermal.avi', 'thermal.h5', 'ptmetadata.yml']
+    file_dict = find_files(root_dir, target_sufs)
+    valid_path = np.all([file_dict[p] is not None for p in file_dict.keys()])
+    out_file = find_files(root_dir, ['ptect.npz'])['ptect.npz']
+    return valid_path, file_dict, out_file
+
+
+def sleap_to_fill_pts(sleap_h5):
+    """
+    Converts SLEAP HDF5 data to fill points.
+
+    Parameters
+    ----------
+    sleap_h5 : str
+        Path to the SLEAP HDF5 file.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        List of fill points for each frame.
+    """
+    with h5py.File(sleap_h5, "r") as f:
+        locations = f["tracks"][:].T
+    t, d1, d2, num_mice = np.shape(locations)
+
+    fill_pts = []
+    last_pts = [[None, None]]
+    for i in range(t):
+        move_pts = np.moveaxis(locations[i], 0, 2)
+        all_xy = np.reshape(move_pts, (2, num_mice * d1))
+        keep = ~np.all(np.isnan(all_xy), axis=0)
+        if np.any(keep):
+            k_pts = all_xy[:, keep].T
+            last_pts = k_pts
+        fill_pts.append(np.vstack(last_pts).astype(int))
+    return fill_pts
+
+
+def expand_urine_data(urine_xys, times=None):
+    """
+    Expands urine data points with optional time information.
+
+    Parameters
+    ----------
+    urine_xys : list of numpy.ndarray
+        List of urine data points for each frame.
+    times : list of float, optional
+        List of time points corresponding to each frame (default is None).
+
+    Returns
+    -------
+    numpy.ndarray
+        Expanded urine data with optional time information.
+    """
+    num_urine_pnts_per_t = [len(xys) for xys in urine_xys]
+    expanded_data = np.vstack(urine_xys)
+    if times is not None:
+        time_vec = np.zeros(expanded_data.shape[0])
+        c = 0
+        for ind, (t, nums) in enumerate(zip(times, num_urine_pnts_per_t)):
+            time_vec[c:(c + nums)] = t
+            c += nums
+        expanded_data = np.hstack((time_vec[:, None], expanded_data))
+    return expanded_data
+
+
+def make_shape_mask(width, height, shape, cent_x, cent_y, *args):
+    """
+    Creates a mask of a specified shape.
+
+    Parameters
+    ----------
+    width : int
+        Width of the mask.
+    height : int
+        Height of the mask.
+    shape : str
+        Shape of the mask ('circle', 'rectangle', or 'polygon').
+    cent_x : int
+        X-coordinate of the center of the shape.
+    cent_y : int
+        Y-coordinate of the center of the shape.
+    *args : tuple
+        Additional arguments for the shape (e.g., radius for circle, width and height for rectangle, points for polygon).
+
+    Returns
+    -------
+    numpy.ndarray
+        Mask of the specified shape.
+    """
+    im = np.zeros((height, width))
+    if shape == 'circle':
+        radius = int(args[0])
+        out_mask = cv2.circle(im, (cent_x, cent_y), radius, 255, -1)
+    elif shape == 'rectangle':
+        rect_w, rect_h = args[:]
+        pt1 = (cent_x - (rect_w // 2), cent_y - (rect_h // 2))
+        pt2 = (cent_x + (rect_w // 2), cent_y + (rect_h // 2))
+        out_mask = cv2.rectangle(im, pt1, pt2, 255, -1)
+    else:
+        pts = []
+        if len(args) > 0:
+            pts = [np.array(args).astype(np.int32)]
+        out_mask = cv2.fillPoly(im, pts, -1)
+    out_mask = out_mask.astype('uint8')
+    return out_mask
+
+
+class PtectPipe(ABC):
+    """
+    Abstract base class for a PtectPipe to pass data through and save in buffer.
+    """
+    buffer=[]
+    @abstractmethod
+    def send(self, *args):
+        """
+        Abstract method to define how data is sent through the pipe.
+
+        Parameters
+        ----------
+        *args : tuple
+            Data to send.
+        """
+        pass
+
+    def read(self):
+        """
+        Reads data from the buffer.
+
+        Returns
+        -------
+        list
+            Data from the buffer.
+        """
+        return self.buffer
+
+
+class Peetector:
+    def __init__(self, avi_file, flood_pnts, dead_zones=[], cent_xy=(320, 212), px_per_cm=7.38188976378, hot_thresh=70,
+                 cold_thresh=30, s_kern=5, di_kern=5, hz=30, v_mask=None, frame_type=None, radius=30,rot_ang=0,
+                 start_frame=0, metadata_file=None, bit_depth=8):
+        """
+        Initializes the Peetector.
+
+        Parameters
+        ----------
+        avi_file : str
+            Path to the AVI file.
+        flood_pnts : str or list
+            Path to the SLEAP file or list of flood points.
+        dead_zones : list, optional
+            List of dead zones (default is []).
+        cent_xy : tuple, optional
+            Center coordinates of the arena (default is (320, 212)).
+        px_per_cm : float, optional
+            Pixels per centimeter (default is 7.38188976378).
+        check_frames : int, optional
+            Number of frames to check for urine events (default is 1).
+        hot_thresh : int, optional
+            Threshold for hot events (default is 70).
+        cold_thresh : int, optional
+            Threshold for cold events (default is 30).
+        s_kern : int, optional
+            Smoothing kernel size (default is 5).
+        di_kern : int, optional
+            Dilation kernel size (default is 5).
+        hz : int, optional
+            Frame rate in Hz (default is 40).
+        v_mask : numpy.ndarray, optional
+            Valid zone mask (default is None).
+        frame_type : int, optional
+            Type of frame to return (default is None).
+        radius : int, optional
+            Radius of the arena (default is 30).
+        rot_ang : float, optional
+            Rotation angle in degrees (default is 0).
+        start_frame : int, optional
+            Starting frame number (default is 0).
+        """
+
+        if metadata_file is not None:
+            md_cont = MDcontroller(metadata_file)
+            start_frame = md_cont.get_val('thermal_offset')
+            hz = md_cont.get_val('thermal_hz')
+            rot_ang = md_cont.get_val('rotation')
+            cent_xy = md_cont.get_val('thermal_center')
+            px_per_cm = md_cont.get_val('thermal_px_per_cm')
+            s_kern = md_cont.get_val('ptect_smooth_kern')
+            hot_thresh = md_cont.get_val('ptect_heat_thresh')
+            cold_thresh = md_cont.get_val('ptect_cool_thresh')
+            di_kern = md_cont.get_val('ptect_dilate_kern')
+
+        self.max_val = 2**bit_depth // 2
+        self.heat_thresh = hot_thresh
+        self.cool_thresh = cold_thresh
+        self.thermal_vid = avi_file
+        self.bg_image = estimate_bg(avi_file)
+        self.vid_obj = cv2.VideoCapture(avi_file)
+        self.width = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if type(flood_pnts) == str:
+            print('Converting slp file to fill points...')
+            self.fill_pts = sleap_to_fill_pts(flood_pnts)
+        else:
+            self.fill_pts = flood_pnts
+        self.dead_zones = dead_zones
+        self.arena_cnt = cent_xy
+        self.arena_params = ()
+        self.px_per_cm = px_per_cm
+        self.smooth_kern = s_kern
+        self.dilate_kern = di_kern
+        self.hz = hz
+        self.frame_type = frame_type
+        self.rot_ang = rot_ang
+        if v_mask is None:
+            self.set_valid_arena('circle', int(radius * px_per_cm))
+        else:
+            self.valid_zone = v_mask
+        self.total_frames = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.current_frame = start_frame
+        self.set_frame(start_frame)
+        self.output_buffer = ()
+        self.arena_shape = 'circle'
+
+    def get_length(self):
+        """
+        Gets the total number of frames in the video.
+
+        Returns
+        -------
+        int
+            Total number of frames.
+        """
+        return self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT)/self.hz
+
+    def read_frame(self, frame_num=None):
+        """
+        Reads the next frame from the video.
+
+        Returns
+        -------
+        tuple
+            A tuple containing a boolean indicating success and the frame data.
+        """
+        if frame_num is None:
+            ret, frame_i = self.vid_obj.read()
+        else:
+            self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+            ret, frame_i = self.vid_obj.read()
+        return ret, frame_i
+
+    def set_frame(self, frame_num):
+        """
+        Sets the current frame number.
+
+        Parameters
+        ----------
+        frame_num : int
+            Frame number to set.
+        """
+        self.vid_obj.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        self.current_frame = frame_num
+
+    def run_ptect(self, pipe: PtectPipe=None, start_frame=0, end_frame=0, save_path=None, chunk_size=512, num_pool=5):
+        """
+        Runs the Peetector on the video.
+
+        Parameters
+        ----------
+        pipe : PtectPipe, optional
+            Pipe for sending progress updates (default is None).
+        start_frame : int, optional
+            Starting frame number (default is 0).
+        end_frame : int, optional
+            Ending frame number (default is 0).
+        save_path : str, optional
+            Path to save the output data (default is None).
+        verbose : bool, optional
+            Whether to print verbose output (default is False).
+
+        Returns
+        -------
+        tuple or None
+            Hot and cool data if save_path is None, otherwise None.
+        """
+
+        self.set_frame(start_frame)
+        if end_frame <= 0:
+            end_frame = self.total_frames
+
+        tot_frames = end_frame - start_frame
+        num_chunks = int(np.ceil(tot_frames / chunk_size))
+
+        pp = Pool(num_pool)
+        stop_pool = False
+
+        job_list = []
+        for i in range(num_chunks):
+            f_list = []
+            chunk_inds = np.arange(i*chunk_size, np.min((i*chunk_size + chunk_size, tot_frames)))
+            self.set_frame(chunk_inds[0])
+            for c in chunk_inds:
+                c_data = (c, self.read_frame()[1], self.fill_pts[c])
+                f_list.append(c_data)
+            this_chunk = (f_list, self.cool_thresh, self.heat_thresh, self.bg_image, self.smooth_kern, self.valid_zone,
+                          self.dead_zones, self.dilate_kern, self.dilate_kern, self.hz, self.rot_ang, self.arena_cnt[0],
+                          self.arena_cnt[1], self.px_per_cm)
+            this_job = pp.apply_async(ptect_chunk, args=(this_chunk,))
+            job_list.append(this_job)
+            msg = f'Reading video: {i} of {num_chunks} chunks done'
+            prc_done = ((i+1)/num_chunks) / 2
+            if pipe is not None:
+                pipe.send((msg, prc_done))
+                if pipe.read():
+                    stop_pool = True
+                    break
+            else:
+                print(msg)
+
+        out_data = []
+        for ind, j in enumerate(job_list):
+            this_out = j.get()
+            out_data.append(this_out)
+            msg = f'Detecting marks: {ind} of {num_chunks} chunks done'
+            prc_done = 0.5 + 0.5*((ind+1) / num_chunks)
+            if pipe is not None:
+                pipe.send((msg, prc_done))
+                if pipe.read():
+                    stop_pool = True
+                    break
+            else:
+                print(msg)
+
+        if stop_pool:
+            pp.terminate()
+            pp.join()
+            print('Ptect halted during processing...')
+        else:
+            all_data = np.vstack(out_data)
+            if save_path is not None:
+                np.savez(save_path, urine_data=all_data)
+                print(f'Ptect complete! Saving to {save_path}')
+            else:
+                return np.vstack(all_data)
+
+    def run_ptect_video(self, start_frame=None, num_frames=None, save_vid=None, show_vid=False, verbose=False):
+        """
+        Runs the Peetector on the video and optionally saves or displays the output.
+
+        Parameters
+        ----------
+        start_frame : int, optional
+            Starting frame number (default is None).
+        num_frames : int, optional
+            Number of frames to process (default is None).
+        save_vid : str, optional
+            Path to save the output video (default is None).
+        show_vid : bool, optional
+            Whether to display the output video (default is False).
+        verbose : bool, optional
+            Whether to print verbose output (default is False).
+
+        Returns
+        -------
+        list
+            List of output data for each frame.
+        """
+        if verbose:
+            print('Running Peetect...')
+
+        if start_frame is not None:
+            self.set_frame(start_frame)
+
+        out_vid = None
+        if save_vid is not None:
+            fourcc = cv2.VideoWriter.fourcc(*'mp4v')
+            out_vid = cv2.VideoWriter(save_vid, fourcc, 120, (1280, 960), isColor=True)
+
+        # if not specified, peetect whole video
+        if num_frames is None:
+            num_frames = int(self.vid_obj.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        out_acc = []
+        for i in range(num_frames):
+            if save_vid is not None or show_vid is not None:
+                out_data, out_frame = self.peetect_next_frame(return_frame=True)
+            else:
+                out_data, out_frame = self.peetect_next_frame(return_frame=False)
+
+            if save_vid is not None:
+                out_vid.write(out_frame)
+
+            if show_vid:
+                cv2.imshow('Peetect Output', out_frame)
+                cv2.waitKey(1)
+            out_acc.append(out_data)
+
+        if save_vid is not None:
+            out_vid.release()
+            if verbose:
+                print('Peetect video saved')
+        cv2.destroyAllWindows()
+
+        if verbose:
+            print('Peetect Finished')
+
+        return out_acc
+
+    def peetect_next_frame(self, return_frame=False, set_frame=None):
+        """
+        Processes the next frame for urine events.
+
+        Parameters
+        ----------
+        return_frame : bool, optional
+            Whether to return the processed frame (default is False).
+
+        Returns
+        -------
+        tuple
+            A tuple containing hot data, cool data, and the current frame number.
+        """
+        fill_pnts = self.fill_pts[self.current_frame]
+
+        urine_data = []
+
+        # run detection on next frame
+        is_read, frame_i = self.read_frame(set_frame)
+        out_frame = None
+        if is_read:
+            urine_data, mask = peetect_frame(frame_i, self.cool_thresh, self.heat_thresh, fill_pnts, self.bg_image,
+                                             self.smooth_kern, self.valid_zone, self.dead_zones, self.dilate_kern,
+                                             self.dilate_kern, self.current_frame, self.hz, self.rot_ang,
+                                             self.arena_cnt[0], self.arena_cnt[1], self.px_per_cm, return_frames=True)
+            cool_evts, hot_evts = np.empty((0, 4)), np.empty((0, 4))
+            # if good urine detected, convert to cm and add to output
+            if len(urine_data) > 0:
+                hot_evts, cool_evts = urine_data[urine_data[:, 3] == 1, :], urine_data[urine_data[:, 3] == 0, :]
+                hot_evts[:, 1:3] = urine_cm_to_px_rot(hot_evts[:, 1:3], self.arena_cnt[0], self.arena_cnt[1],
+                                                      self.px_per_cm, 0)
+                cool_evts[:, 1:3] = urine_cm_to_px_rot(cool_evts[:, 1:3], self.arena_cnt[0], self.arena_cnt[1],
+                                                      self.px_per_cm, 0)
+
+            if return_frame:
+                if self.frame_type == 2:
+                    output_f = self.show_output(frame_i, hot_evts[:, 1:3].astype(int), fill_pnts, cool_evts[:, 1:3].astype(int))
+                    out_frame = self.show_all_steps(mask, output_f)
+                else:
+                    out_frame = self.show_output(frame_i, hot_evts[:, 1:3].astype(int), fill_pnts, cool_evts[:, 1:3].astype(int))
+
+            self.current_frame += 1
+
+        cur_frame = self.current_frame
+        return urine_data, out_frame, cur_frame
+
+    def set_valid_arena(self, shape, *args):
+        """
+        Sets the valid arena mask.
+
+        Parameters
+        ----------
+        shape : str
+            Shape of the arena ('circle', 'rectangle', or 'polygon').
+        *args : tuple
+            Additional arguments for the shape (e.g., radius for circle, width and height for rectangle, points for polygon).
+        """
+        self.valid_zone = make_shape_mask(self.width, self.height, shape,
+                                          self.arena_cnt[0], self.arena_cnt[1],*args)
+        if shape == 'circle':
+            self.arena_params = args[0]
+
+        if shape == 'rectangle':
+            self.arena_params = args[:2]
+
+        else:
+            self.arena_params = args
+
+        self.arena_shape = shape
+
+    def add_dz(self, zone=None, num_pts=0):
+        """
+        Adds dead zones to the arena.
+
+        Parameters
+        ----------
+        zone : str or list, optional
+            Zone type or list of points (default is None).
+        num_pts : int, optional
+            Number of points to define the dead zone (default is 0).
+
+        Returns
+        -------
+        list
+            List of dead zones.
+        """
+        w1 = np.array([[316, 210], [330, 210], [330, 480], [316, 480]])
+        w2 = np.array([[280, 215], [110, 118], [129, 100], [306, 197]])
+        w3 = np.array([[350, 215], [545, 95], [530, 70], [337, 195]]) + [5, 5]
+        c_post = np.array([[337, 165], [356, 178], [368, 198], [367, 223], [356, 242], [336, 253], [311, 250],
+                           [292, 238], [282, 219], [282, 193], [292, 175], [314, 166]]) + [-2, 3]
+        self.dead_zones = []
+        if zone == 'block0':
+            [self.dead_zones.append(w) for w in [w1, w2, w3, c_post]]
+        elif zone == 'block1':
+            self.dead_zones.append(c_post)
+        else:
+            if zone is None:
+                vid_obj = cv2.VideoCapture(self.thermal_vid)
+                _, frame = vid_obj.read()
+                f = plt.figure(label='Define Deadzone')
+                plt.imshow(frame)
+                if num_pts == 0:
+                    num_pts = 10
+                plt.title(f'Click {num_pts} times to define deadzone')
+                pnts = plt.ginput(n=num_pts, timeout=0)
+                plt.close(f)
+                this_dz = []
+                for p in pnts:
+                    this_dz.append([int(p[0]), int(p[1])])
+                self.dead_zones.append(this_dz)
+            else:
+                self.dead_zones = zone
+
+        return self.dead_zones
+
+    def show_all_steps(self, mask_list, out_frame):
+        """
+        Shows all processing steps for a frame.
+
+        Parameters
+        ----------
+        mask_list : list of numpy.ndarray
+            List of intermediate masks.
+        pnts : numpy.ndarray
+            Points to fill.
+
+        Returns
+        -------
+        numpy.ndarray
+            Concatenated image of all processing steps.
+        """
+
+        # mask_list order: [frame_smooth, heat, di_frame, fill_frame, dz_frame, cool_mask]
+        mask_list = [cv2.cvtColor(m.astype(np.uint8), cv2.COLOR_GRAY2BGR) for m in mask_list]
+
+        concat_masks = np.zeros((640, 480))
+        mask_h, mask_w, mask_d = np.shape(mask_list[0])
+        out_frame = cv2.resize(out_frame, (mask_w, mask_h))
+        draw_zones(mask_list[1], self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
+
+        top_half = np.hstack(mask_list[:2])
+        bot_half = np.hstack((mask_list[2], out_frame))
+        concat_masks = np.vstack((top_half, bot_half))
+        text_xs = np.array([0.05, 1.05, 0.05]) * mask_w
+        text_ys = np.array([0.95, 0.95, 1.95]) * mask_h
+        text_labs = ['Smooth', 'Mask Zones', 'Cool Thresh']
+
+        font = ImageFont.truetype(FIRA_MONO, 32)
+        img_pil = Image.fromarray(concat_masks)
+        draw = ImageDraw.Draw(img_pil)
+        for x, y, l in zip(text_xs, text_ys, text_labs):
+            draw.rectangle(((int(x) - 8, int(y) - 30), (int(x) + len(l) * 20, int(y) + 5)),
+                          (255, 255, 255), -1)
+            draw.text((int(x), int(y)), l, font=font, fill=(0, 0, 0, 0), anchor='lb')
+        img = np.array(img_pil)
+        return img
+
+    def show_output(self, raw_frame, urine_pnts, sleap_pnts, cool_pnts):
+        """
+        Shows the output frame with annotations.
+
+        Parameters
+        ----------
+        raw_frame : numpy.ndarray
+            Raw frame data.
+        urine_pnts : numpy.ndarray
+            Urine points.
+        sleap_pnts : numpy.ndarray
+            SLEAP points.
+        cool_pnts : numpy.ndarray
+            Cool points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Annotated output frame.
+        """
+        draw_zones(raw_frame, self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
+
+        cols = ((0, 1), (1, 2))
+        for pnts, c in zip((cool_pnts, urine_pnts), cols):
+            if len(pnts) > 0:
+                raw_frame[pnts[:, 0], pnts[:, 1], c[0]] = 255
+                raw_frame[pnts[:, 0], pnts[:, 1], c[1]] = 255
+
+        draw_sleap_pts(raw_frame, sleap_pnts)
+
+        big_frame = cv2.resize(raw_frame, (1280, 960))
+        font = ImageFont.truetype(FIRA_MONO, 48)
+        img_pil = Image.fromarray(big_frame)
+        draw = ImageDraw.Draw(img_pil)
+        draw.text((20, 10), 'Fill Points', font=font, fill=(100, 100, 200, 0))
+        draw.text((20, 60), 'Dead Zones', font=font, fill=(0, 0, 250, 0))
+        draw.text((20, 110), 'Cool Mark', font=font, fill=(255, 255, 0, 0))
+        draw.text((20, 160), 'Hot Mark', font=font, fill=(0, 255, 255, 0))
+        img = np.array(img_pil)
+        return img
+
+
+def ptect_chunk(p_chunk):
+    frame_data = p_chunk[0]
+    (cool_thresh, hot_thresh, bg_image, smooth_kern, valid_zones, dz_data, dilate_kern, erode_kern, hz, rot_ang, cent_x,
+     cent_y, px_per_cm) = p_chunk[1:]
+    out_data = []
+    for (ind, frame, pts) in frame_data:
+        pt_data = peetect_frame(frame, cool_thresh, hot_thresh, pts, bg_image, smooth_kern, valid_zones, dz_data, dilate_kern,
+                                erode_kern, ind, hz, rot_ang, cent_x, cent_y, px_per_cm)
+        out_data.append(pt_data)
+    out_data = np.vstack(out_data)
+    return out_data
+
+
+def peetect_frame(frame, cool_thresh, hot_thresh, pts, bg_image, smooth_kern, valid_zones, dz_data, dilate_kern,
+                  erode_kern, current_frame, hz, rot_ang, cent_x, cent_y, px_per_cm, max_val=128, return_frames=False):
+    """
+    Detects urine events in a frame.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        Frame data.
+    pts : numpy.ndarray
+        Points to fill.
+    hot_thresh : int, optional
+        Threshold for hot events (default is 70).
+    cool_thresh : int, optional
+        Threshold for cool events (default is 30).
+
+    Returns
+    -------
+    tuple
+        A tuple containing urine points, cool points, and a list of intermediate masks.
+    """
+
+    # convert to grey
+    f1 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # smooth frame
+    frame_smooth = mean_smooth_frame(f1, smooth_kern)
+    bg_smooth = mean_smooth_frame(bg_image, smooth_kern)
+
+    sub_frame = np.uint8(np.min(np.array((255*np.ones_like(frame_smooth), (128.0+(np.array(frame_smooth).astype(np.float32) - np.array(bg_smooth).astype(np.float32))))), axis=0))
+
+    # mask valid zone
+    valid_frame = mask_valid(sub_frame, valid_zones, 128)
+
+    # remove deadzones
+    dz_frame = fill_dead_zones(valid_frame, dz_data, (128, 128, 128))
+
+    # mask by thermal threshold
+    # cool_mask = np.uint8(255 * (-sub_frame.astype(np.float32) > cool_thresh))
+    # cool_mask = 255*(np.abs(dz_frame-128.0) > cool_thresh).astype(np.uint8)
+    cool_mask = (255 * (128.0-dz_frame > (max_val*cool_thresh/100))).astype(np.uint8)
+    hot_mask = (255 * (dz_frame - 128.0 > (max_val*hot_thresh/100))).astype(np.uint8)
+    full_mask = np.bitwise_or(hot_mask, cool_mask)
+
+    # dilate resulting mask to hopefully merge mouse parts and expand urine
+    di_frame = dilate_frame(full_mask, dilate_kern)
+
+    # fill in all the given points with black
+    fill_frame = flood_fill_points(di_frame, pts)
+
+    # erode back previous dilation
+    er_frame = erode_frame(fill_frame, erode_kern)
+
+    real_cool = np.bitwise_and(cool_mask, er_frame)
+    real_hot = np.bitwise_and(hot_mask, er_frame)
+
+    # if urine detected set output to urine indices
+    cool_xys = np.empty((0, 2))
+    if np.sum(real_cool) > 0:
+        cool_xys = np.argwhere(real_cool > 0)
+
+    # if urine detected set output to urine indices
+    hot_xys = np.empty((0, 2))
+    if np.sum(real_hot) > 0:
+        hot_xys = np.argwhere(real_hot > 0)
+
+    cool_xys = np.hstack((cool_xys, np.zeros((len(cool_xys), 1))))
+    hot_xys = np.hstack((hot_xys, np.ones((len(hot_xys), 1))))
+    urine_data = np.vstack((hot_xys, cool_xys))
+    if len(urine_data) > 0:
+        urine_data = np.hstack(((current_frame/hz)*np.ones((len(urine_data), 1)), urine_data)).astype(np.float32)
+    else:
+        urine_data = np.empty((0, 4)).astype(np.float32)
+
+    rot_xy = urine_px_to_cm_rot(urine_data[:, 1:3].astype(np.float32), cent_x, cent_y, px_per_cm, rot_ang=rot_ang)
+    urine_data[:, 1:3] = rot_xy
+    if return_frames:
+        return urine_data, [sub_frame, di_frame, er_frame]
+    else:
+        return urine_data
+
+
+def mean_smooth_frame(frame, s_kern):
+    """
+    Smooths a frame using a kernel.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        Frame data.
+
+    Returns
+    -------
+    numpy.ndarray
+        Smoothed frame.
+    """
+    smooth_kern = np.ones((s_kern, s_kern), np.float32) / (s_kern * s_kern)
+    frame_smooth = cv2.filter2D(src=frame, ddepth=-1, kernel=smooth_kern)
+    return frame_smooth
+
+
+def mask_valid(frame, zone_data, fill=None):
+    """
+    Masks the valid zone in a frame.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        Frame data.
+    fill : str, optional
+        Fill color ('w' for white, default is None).
+
+    Returns
+    -------
+    numpy.ndarray
+        Frame with valid zone masked.
+    """
+    valid_frame = cv2.bitwise_and(frame, frame, mask=zone_data)
+    if fill == 'w':
+        f_val = 255
+    elif fill is None:
+        f_val = 0
+    else:
+        f_val = fill
+    cv2.floodFill(valid_frame, None, (1, 1), f_val)
+    return valid_frame
+
+
+def fill_dead_zones(frame, dead_zones, fill=None):
+    """
+    Fills dead zones in a frame.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        Frame data.
+    fill : str, optional
+        Fill color ('w' for white, default is None).
+
+    Returns
+    -------
+    numpy.ndarray
+        Frame with dead zones filled.
+    """
+    c = (0, 0, 0)
+    if fill == 'w':
+        c = (255, 255, 255)
+    elif fill is not None:
+        c = fill
+    for dz in dead_zones:
+        dz2 = np.array(dz).astype(int)
+        cv2.fillPoly(frame, pts=[dz2], color=c)
+    return frame
+
+
+def dilate_frame(frame, di_kern):
+    """
+    Dilates a frame using a kernel.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        Frame data.
+
+    Returns
+    -------
+    numpy.ndarray
+        Dilated frame.
+    """
+    dilate_kern = np.ones((di_kern, di_kern), np.uint8)
+    di_frame = cv2.dilate(frame, dilate_kern, iterations=1)
+    return di_frame
+
+
+def flood_fill_points(frame, pnts, fill=0):
+    """
+    Fills a frame with points.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        Frame data.
+    pnts : numpy.ndarray
+        Points to fill.
+    width : int
+        Width of the frame.
+    height : int
+        Height of the frame.
+
+    Returns
+    -------
+    numpy.ndarray
+        Frame with points filled.
+    """
+    cop_f = frame.copy()
+    height, width = np.shape(cop_f)
+    for p in pnts:
+        if p[0] is not None:
+            px = int(p[0])
+            py = int(p[1])
+            if 0 < px < width and 0 < py < height:
+                if frame[py, px] > 0:
+                    cv2.floodFill(cop_f, None, (px, py), fill)
+    return cop_f
+
+
+def erode_frame(frame, e_kern):
+    er_kern = np.ones((e_kern, e_kern), np.uint8)
+    er_frame = cv2.erode(frame, er_kern, iterations=1)
+    return er_frame
+
+
+def urine_px_to_cm_rot(pts, cent_x, cent_y, px_per_cm, rot_ang=0):
+    """
+    Converts urine points from pixels to centimeters with rotation.
+
+    Parameters
+    ----------
+    pts_list : list of numpy.ndarray
+        List of urine points in pixels.
+    rot_ang : float, optional
+        Rotation angle in degrees (default is 0).
+
+    Returns
+    -------
+    list of numpy.ndarray
+        List of urine points in centimeters.
+    """
+    x = (pts[:, 1] - cent_x) / px_per_cm
+    y = -(pts[:, 0] - cent_y) / px_per_cm
+    x, y = rotate_xy(x, y, rot_ang)
+    pts_cm = np.vstack((x, y)).T
+    return pts_cm
+
+
+def urine_cm_to_px_rot(pts, cent_x, cent_y, px_per_cm, rot_ang=0):
+    """
+    Converts urine points from pixels to centimeters with rotation.
+
+    Parameters
+    ----------
+    pts_list : list of numpy.ndarray
+        List of urine points in pixels.
+    rot_ang : float, optional
+        Rotation angle in degrees (default is 0).
+
+    Returns
+    -------
+    list of numpy.ndarray
+        List of urine points in centimeters.
+    """
+    x = -pts[:, 1] * px_per_cm + cent_y
+    y = (pts[:, 0] * px_per_cm) + cent_x
+    x, y = rotate_xy(x, y, rot_ang)
+    pts_cm = np.vstack((x, y)).T
+    return pts_cm
+
+
+def draw_zones(raw_frame, shape, cent_x, cent_y, arena_data, dead_zones):
+    match shape:
+        case 'circle':
+            cv2.circle(raw_frame, (cent_x, cent_y), arena_data[0], (255, 255, 255, 255), 1,
+                       cv2.LINE_AA)
+        case 'rectangle':
+            start_pt = (cent_x - arena_data[0] // 2, cent_y - arena_data[1] // 2)
+            end_pt = (cent_x + arena_data[0] // 2, cent_y + arena_data[1] // 2)
+            cv2.rectangle(raw_frame, start_pt, end_pt, (255, 255, 255, 255), 1, cv2.LINE_AA)
+        case 'custom':
+            pts = np.array(arena_data)
+            cv2.polylines(raw_frame, [pts], True, (255, 255, 255, 255), 1, cv2.LINE_AA)
+
+    for d in dead_zones:
+        pts = np.array(d, dtype=np.int32)
+        cv2.polylines(raw_frame, [pts], True, (0, 0, 250), 1, cv2.LINE_AA)
+
+def draw_sleap_pts(raw_frame, sleap_pnts):
+    for s in sleap_pnts:
+        if s[0] is not None:
+            slp_pnt = s.astype(int)
+            cv2.circle(raw_frame, (slp_pnt[0], slp_pnt[1]), 3, (100, 100, 200), -1, cv2.LINE_AA)
+
+
+def urine_across_time(expand_urine, len_s=0, hz=40):
+    """
+    Computes urine events across time.
+
+    Parameters
+    ----------
+    expand_urine : numpy.ndarray
+        Expanded urine data.
+    len_s : float, optional
+        Length of the time window in seconds (default is 0).
+    hz : int, optional
+        Frame rate in Hz (default is 40).
+
+    Returns
+    -------
+    numpy.ndarray
+        Urine events across time.
+    """
+    urine_over_time = np.empty((0, 2))
+    times = expand_urine[:, 0]
+    if len_s == 0 and len(times) > 0:
+        len_s = np.max(times)
+    if len_s > 0:
+        unique_ts, urine_cnts = np.unique(times, return_counts=True)
+        urine_over_time = np.empty((len(unique_ts), 2))
+        urine_over_time[:, 0] = unique_ts.astype(int)
+        urine_over_time[:, 1] = urine_cnts
+    return urine_over_time
+
+
+def proj_urine_across_time(urine_data, thresh=0):
+    """
+    Projects urine events across time.
+
+    Parameters
+    ----------
+    urine_data : numpy.ndarray
+        Urine data.
+    thresh : int, optional
+        Threshold for urine events (default is 0).
+
+    Returns
+    -------
+    tuple
+        Unique urine points and corresponding times.
+    """
+    all_xys = urine_data[:, 1:]
+    unique_xys, unique_indices, cnts = np.unique(all_xys, axis=0, return_index=True, return_counts=True)
+    unique_xys = unique_xys[cnts > thresh, :]
+    return unique_xys, urine_data[unique_indices, 0]
+
+
+def split_urine_data(urine_data):
+    """
+    Splits urine data into hot and cool events.
+
+    Parameters
+    ----------
+    urine_data : numpy.ndarray
+        Urine data.
+
+    Returns
+    -------
+    tuple
+        Hot and cool urine data.
+    """
+    hot_ind = urine_data[:, 3].astype(bool)
+    return urine_data[hot_ind, :3], urine_data[~hot_ind, :3]
+
+
+def make_mark_raster(urine_data, hot_thresh=0, cool_thresh=0):
+    """
+    Creates a raster of urine marks.
+
+    Parameters
+    ----------
+    urine_data : numpy.ndarray
+        Urine data.
+    hot_thresh : int, optional
+        Threshold for hot events (default is 0).
+    cool_thresh : int, optional
+        Threshold for cool events (default is 0).
+
+    Returns
+    -------
+    tuple
+        Hot and cool raster data.
+    """
+    hot_data, cool_data = split_urine_data(urine_data)
+    hot_rast = urine_across_time(hot_data, hot_thresh)[:, 0]
+    cool_rast = urine_across_time(cool_data, cool_thresh)[:, 1]
+    return hot_rast, cool_rast
+
+
+def urine_segmentation(urine_data, space_dist=1, time_dist=5):
+    """
+    Segments urine data based on spatial and temporal distance.
+
+    Parameters
+    ----------
+    urine_data : numpy.ndarray
+        Urine data.
+    space_dist : float, optional
+        Spatial distance threshold (default is 1).
+    time_dist : float, optional
+        Temporal distance threshold (default is 5).
+
+    Returns
+    -------
+    numpy.ndarray
+        Segmented urine data.
+    """
+    print('Segmenting urine...')
+    time_diff = np.diff(urine_data[:, 0])
+    time_clus_ind = np.where(time_diff > time_dist)[0]
+    time_clus = np.zeros(len(urine_data))
+    for ind, (t0, t1) in enumerate(zip(np.hstack((0, time_clus_ind[:-1])), time_clus_ind)):
+        time_clus[t0:t1] = ind
+
+    t_clus = np.unique(time_clus)
+    clus_id = np.zeros_like(time_clus)
+    clus = 0
+    for t_ind, t in enumerate(t_clus):
+        t_inds = np.where(time_clus == t)[0]
+        t_data = urine_data[t_inds, 1:]
+        xys = np.unique(t_data, axis=0)
+        t_c = DBSCAN(eps=space_dist, min_samples=1).fit_predict(xys)
+        full_clus = np.zeros(len(t_data))
+        for i, xy in enumerate(xys):
+            inds = np.all(t_data == xy, axis=1)
+            full_clus[inds] = t_c[i]
+        clus_id[t_inds] = full_clus+clus
+        clus += max(full_clus)
+
+    return clus_id
+
+
+def get_urine_source(mice_cents, urine_data, urine_seg, look_back_frames=40):
+    """
+    Identifies the source of urine marks.
+
+    Parameters
+    ----------
+    mice_cents : numpy.ndarray
+        Centroid positions of mice.
+    urine_data : numpy.ndarray
+        Urine data.
+    urine_seg : numpy.ndarray
+        Segmented urine data.
+    look_back_frames : int, optional
+        Number of frames to look back (default is 40).
+
+    Returns
+    -------
+    numpy.ndarray
+        Identified urine sources.
+    """
+    print('Finding Marking Source...')
+    num_m = mice_cents.shape[2]
+    urine_segs = np.unique(urine_seg)
+    urine_ids = np.zeros_like(urine_seg)
+    for u in urine_segs:
+        if u != np.nan:
+            inds = urine_seg == u
+            times = urine_data[inds, 0].astype(int)
+            cent_seg = np.mean(urine_data[inds, 1:], axis=0)
+            mice_xys = mice_cents[times[0]-look_back_frames, :, :]
+            dists = np.linalg.norm(mice_xys - cent_seg, axis=1)
+            urine_ids[inds] = np.argmin(dists)
+    return urine_ids
+
+
+def dist_to_urine(x, y, expand_urine, thresh=0):
+    """
+    Computes the distance to the closest urine mark across time.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        X coordinates.
+    y : numpy.ndarray
+        Y coordinates.
+    expand_urine : numpy.ndarray
+        Expanded urine data.
+    thresh : int, optional
+        Threshold for urine events (default is 0).
+
+    Returns
+    -------
+    numpy.ndarray
+        Distances to urine marks.
+    """
+    xy_data = np.vstack((x, y)).T
+    if np.shape(expand_urine)[1] == 3:
+        urine_xy_cm = proj_urine_across_time(expand_urine, thresh=thresh)
+    else:
+        urine_xy_cm = expand_urine
+    dist_acc = []
+    for xy in xy_data:
+        xy_vec = np.ones((len(urine_xy_cm), 2)) * np.expand_dims(xy, 1).T
+        dists = np.sqrt(np.sum((xy_vec - urine_xy_cm)**2, axis=1))
+        dist_acc.append(np.min(dists))
+    return np.array(dist_acc)
+
+
+def estimate_bg(avi_file, frame_win=(0, 1000), method='median'):
+    vid_obj = cv2.VideoCapture(avi_file)
+    bg_im = None
+    frame_acc = []
+    for f in range(frame_win[0], frame_win[1]):
+        was_read, frame = vid_obj.read()
+        if was_read:
+            frame_acc.append(frame)
+    match method:
+        case 'min':
+            bg_im = np.min(np.array(frame_acc), axis=0)
+        case 'mean':
+            bg_im = np.mean(np.array(frame_acc), axis=0)
+        case 'median':
+            bg_im = np.median(np.array(frame_acc), axis=0).astype(np.uint8)
+    bg_im = cv2.cvtColor(bg_im, cv2.COLOR_BGR2GRAY)
+    return bg_im
+

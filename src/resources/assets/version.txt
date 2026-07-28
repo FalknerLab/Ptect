@@ -1,4 +1,0 @@
-Ptect v1.0 developed by David Allen
-Github: https://github.com/FalknerLab/Ptect.git
-
-Copyright (c) 2024, FalknerLab

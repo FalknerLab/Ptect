@@ -1,2 +1,2 @@
-graft src
-recursive-include src/resources
+graft territorytools
+recursive-include territorytools/resources
