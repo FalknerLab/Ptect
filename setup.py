@@ -11,7 +11,7 @@ setup(
     author="David Allen",
     author_email="da9769@princeton.edu",
     packages=['territorytools', 'territorytools.resources'],
-    python_requires=">=3.8",
+    python_requires=">=3.12.13",
     install_requires=reqs,
     include_package_data=True,
     entry_points={"console_scripts": ["ptect=territorytools.cli:main",]},
