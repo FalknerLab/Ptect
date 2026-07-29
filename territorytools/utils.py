@@ -1,7 +1,7 @@
 import os
 import h5py
 import numpy as np
-import imageio
+# import imageio
 import cv2
 
 
@@ -435,30 +435,30 @@ def rename_ri(root_dir):
             os.rename(this_dir, new_dir)
 
 
-def make_video_gif(video_path, skip_n=1, orientation='rni'):
-    vid_read = imageio.get_reader(video_path)
-    vid_md = vid_read.get_meta_data()
-    num_frames = np.floor(vid_md['duration'] * vid_md['fps'])
-    out_path = os.path.split(video_path)[0]
-    out_path = os.path.join(out_path, "thermal_fast.gif")
-    io_writer = imageio.get_writer(out_path, mode="I")
-    inds = np.arange(num_frames, step=skip_n, dtype=int)
-    xs = [20, 260, 535]
-    ys = [450, 60, 450]
-    for i in inds:
-        print(i, inds[-1])
-        im = vid_read.get_data(i)
-        text_im = np.array(im)
-        labs = ['self', 'neutral', 'other']
-        match orientation:
-            case 'irn':
-                labs = ['other', 'self', 'neutral']
-            case 'nir':
-                labs = ['neutral', 'other', 'self']
-        for x, y, l in zip(xs, ys, labs):
-            cv2.putText(text_im, l, (x, y), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0))
-        io_writer.append_data(text_im)
-    io_writer.close()
+# def make_video_gif(video_path, skip_n=1, orientation='rni'):
+#     vid_read = imageio.get_reader(video_path)
+#     vid_md = vid_read.get_meta_data()
+#     num_frames = np.floor(vid_md['duration'] * vid_md['fps'])
+#     out_path = os.path.split(video_path)[0]
+#     out_path = os.path.join(out_path, "thermal_fast.gif")
+#     io_writer = imageio.get_writer(out_path, mode="I")
+#     inds = np.arange(num_frames, step=skip_n, dtype=int)
+#     xs = [20, 260, 535]
+#     ys = [450, 60, 450]
+#     for i in inds:
+#         print(i, inds[-1])
+#         im = vid_read.get_data(i)
+#         text_im = np.array(im)
+#         labs = ['self', 'neutral', 'other']
+#         match orientation:
+#             case 'irn':
+#                 labs = ['other', 'self', 'neutral']
+#             case 'nir':
+#                 labs = ['neutral', 'other', 'self']
+#         for x, y, l in zip(xs, ys, labs):
+#             cv2.putText(text_im, l, (x, y), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 0))
+#         io_writer.append_data(text_im)
+#     io_writer.close()
 
 
 if __name__ == '__main__':

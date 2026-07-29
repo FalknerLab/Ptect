@@ -1,7 +1,6 @@
 numpy
 opencv-python
 h5py
-imageio==0.3.0
 matplotlib
 scipy
 sleap-io
