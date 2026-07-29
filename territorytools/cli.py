@@ -1,9 +1,7 @@
-import os
 import argparse
 from importlib.resources import files
 
 from territorytools.gui import PtectApp
-from territorytools.demo import run_demo
 from territorytools.urine import Peetector, valid_ptect_fold
 
 
@@ -32,14 +30,16 @@ def main():
 
     if num_args == 0:
         print_info()
+        return
 
     data_fold=None
     if args['folder'] is not None:
         data_fold = args['folder']
 
     if args['demo']:
-        run_demo()
-    elif args['gui']:
+        data_fold = get_demo_path()
+
+    if args['gui']:
         app = PtectApp(data_folder=data_fold)
     elif data_fold is not None:
         if args['outdir'] is not None:
@@ -64,6 +64,10 @@ def print_info():
     """
     v_file = open(str(files('territorytools').joinpath('resources').joinpath('assets').joinpath('version.txt')), 'r')
     print(v_file.read())
+
+
+def get_demo_path():
+    return str(files('territorytools').joinpath('resources').joinpath('demo'))
 
 
 if __name__ == '__main__':
