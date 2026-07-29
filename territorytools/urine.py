@@ -1,6 +1,7 @@
 from abc import abstractmethod, ABC
 from multiprocessing import Pool
-from importlib import resources
+from importlib.resources import files
+
 import cv2
 import h5py
 import numpy as np
@@ -12,7 +13,7 @@ from territorytools.ttclasses import MDcontroller
 from territorytools.utils import rotate_xy, find_files
 
 
-FIRA_MONO = str(resources.files('resources').joinpath('assets').joinpath('fira_mono.ttf'))
+FIRA_MONO = str(files('territorytools').joinpath('resources').joinpath('assets').joinpath('fira_mono.ttf'))
 
 
 def valid_ptect_fold(root_dir: str):

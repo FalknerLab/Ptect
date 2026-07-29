@@ -1,5 +1,5 @@
 import sys
-from importlib import resources
+from importlib.resources import files
 import cv2
 import numpy as np
 from PyQt5.QtCore import *
@@ -458,7 +458,7 @@ class PtectWindow(QWidget):
         super().__init__()
         self.parent = parent
         self.control = ptect_cont
-        icon_path = str(resources.files('resources').joinpath('assets').joinpath('ptect_icon.png'))
+        icon_path = str(files('territorytools').joinpath('resources').joinpath('assets').joinpath('ptect_icon.png'))
         self.icon = QIcon(icon_path)
         self.setWindowIcon(self.icon)
 
@@ -606,14 +606,14 @@ class PtectRunWindow(PtectWindow):
         self.setFixedSize(420, 120)
         self.setWindowTitle('Running Ptect...')
 
-        finish_i_path = str(resources.files('resources').joinpath('assets').joinpath('finish_icon.png'))
+        finish_i_path = str(files('territorytools').joinpath('resources').joinpath('assets').joinpath('finish_icon.png'))
         self.finish_w = QLabel(self)
         self.finish_w.setPixmap(QPixmap(finish_i_path))
         self.finish_w.move(340, 60)
 
         self.message = QLabel('', self)
         self.message.setGeometry(10, 10, 400, 30)
-        self.mouse_i_path = str(resources.files('resources').joinpath('assets').joinpath('mouse_icon.png'))
+        self.mouse_i_path = str(files('territorytools').joinpath('resources').joinpath('assets').joinpath('mouse_icon.png'))
         self.icon_w = QLabel(self)
         self.icon_w.setPixmap(QPixmap(self.mouse_i_path))
         self.icon_w.move(20, 55)
