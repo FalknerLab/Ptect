@@ -1,5 +1,6 @@
 import os
 import argparse
+from importlib.resources import files
 
 from territorytools.gui import PtectApp
 from territorytools.demo import run_demo
@@ -61,7 +62,7 @@ def print_info():
     -------
     None
     """
-    v_file = open(os.path.abspath('resources/version.txt'), 'r')
+    v_file = open(str(files('territorytools').joinpath('resources').joinpath('assets').joinpath('version.txt')), 'r')
     print(v_file.read())
 
 
