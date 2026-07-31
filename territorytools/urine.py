@@ -316,6 +316,10 @@ class Peetector:
             Hot and cool data if save_path is None, otherwise None.
         """
 
+        if chunk_size > 512:
+            print('Chunk size too big, setting to 512...')
+            chunk_size = 512
+
         self.set_frame(start_frame)
         if end_frame <= 0:
             end_frame = self.total_frames

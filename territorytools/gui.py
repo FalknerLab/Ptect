@@ -991,7 +991,7 @@ class SlideInputer(QGroupBox):
 
     def set_value(self, value):
         if self.dtype == 'float':
-            value = np.round(value, 2)
+            value = float(np.round(value, 2))
         self.cur_val = value
         self.ebox.setText(str(value))
         self.slide.setValue(np.round(((self.cur_val - self.offset) * self.scale)).astype(int))
