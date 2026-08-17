@@ -222,6 +222,7 @@ class Peetector:
             cold_thresh = md_cont.get_val('ptect_cool_thresh')
             di_kern = md_cont.get_val('ptect_dilate_kern')
             dead_zones = md_cont.get_val('deadzone')
+            radius = md_cont.get_val('arena_data') / px_per_cm
 
         self.max_val = 2**bit_depth // 2
         self.heat_thresh = hot_thresh
