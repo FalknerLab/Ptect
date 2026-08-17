@@ -221,6 +221,7 @@ class Peetector:
             hot_thresh = md_cont.get_val('ptect_heat_thresh')
             cold_thresh = md_cont.get_val('ptect_cool_thresh')
             di_kern = md_cont.get_val('ptect_dilate_kern')
+            dead_zones = md_cont.get_val('deadzone')
 
         self.max_val = 2**bit_depth // 2
         self.heat_thresh = hot_thresh
