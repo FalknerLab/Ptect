@@ -576,28 +576,27 @@ class Peetector:
             Concatenated image of all processing steps.
         """
 
-        # mask_list order: [frame_smooth, heat, di_frame, fill_frame, dz_frame, cool_mask]
+        # mask_list order: [frame_smooth, bg_smooth, sub_frame, dz_frame, di_frame, fill_frame, er_frame]
         mask_list = [cv2.cvtColor(m.astype(np.uint8), cv2.COLOR_GRAY2BGR) for m in mask_list]
-
-        concat_masks = np.zeros((640, 480))
+        draw_sleap_pts(mask_list[5], self.fill_pts[self.current_frame])
         mask_h, mask_w, mask_d = np.shape(mask_list[0])
         out_frame = cv2.resize(out_frame, (mask_w, mask_h))
-        draw_zones(mask_list[1], self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
+        draw_zones(mask_list[3], self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
 
-        top_half = np.hstack(mask_list[:2])
-        bot_half = np.hstack((mask_list[2], out_frame))
+        top_half = np.hstack(mask_list[:4])
+        bot_half = np.hstack((np.hstack(mask_list[4:]), out_frame))
         concat_masks = np.vstack((top_half, bot_half))
         text_xs = np.array([0.05, 1.05, 0.05]) * mask_w
         text_ys = np.array([0.95, 0.95, 1.95]) * mask_h
-        text_labs = ['Smooth', 'Mask Zones', 'Cool Thresh']
+        # text_labs = ['Background Sub', 'Thresh and Dilate', 'Fill and Erode']
 
         font = ImageFont.truetype(FIRA_MONO, 32)
         img_pil = Image.fromarray(concat_masks)
         draw = ImageDraw.Draw(img_pil)
-        for x, y, l in zip(text_xs, text_ys, text_labs):
-            draw.rectangle(((int(x) - 8, int(y) - 30), (int(x) + len(l) * 20, int(y) + 5)),
-                          (255, 255, 255), -1)
-            draw.text((int(x), int(y)), l, font=font, fill=(0, 0, 0, 0), anchor='lb')
+        # for x, y, l in zip(text_xs, text_ys, text_labs):
+        #     draw.rectangle(((int(x) - 8, int(y) - 30), (int(x) + len(l) * 20, int(y) + 5)),
+        #                   (255, 255, 255), -1)
+        #     draw.text((int(x), int(y)), l, font=font, fill=(0, 0, 0, 0), anchor='lb')
         img = np.array(img_pil)
         return img
 
@@ -733,7 +732,7 @@ def peetect_frame(frame, cool_thresh, hot_thresh, pts, bg_image, smooth_kern, va
     rot_xy = urine_px_to_cm_rot(urine_data[:, 1:3].astype(np.float32), cent_x, cent_y, px_per_cm, rot_ang=rot_ang)
     urine_data[:, 1:3] = rot_xy
     if return_frames:
-        return urine_data, [sub_frame, di_frame, er_frame]
+        return urine_data, [frame_smooth, bg_smooth, sub_frame, dz_frame, di_frame, fill_frame, er_frame]
     else:
         return urine_data
 
