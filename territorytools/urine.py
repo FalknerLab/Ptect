@@ -578,13 +578,15 @@ class Peetector:
             Concatenated image of all processing steps.
         """
 
-        # mask_list order: [frame_smooth, bg_smooth, sub_frame, dz_frame, di_frame, fill_frame, er_frame]
+        # mask_list order: [frame_smooth, bg_smooth, sub_frame, dz_frame, full_mask, di_frame, fill_frame]
         mask_list = [cv2.cvtColor(m.astype(np.uint8), cv2.COLOR_GRAY2BGR) for m in mask_list]
         draw_sleap_pts(mask_list[6], self.fill_pts[self.current_frame])
+        out_mask = np.zeros_like(mask_list[0], dtype=np.uint8)
         if len(hot_u) > 0:
-            mask_list[-1][hot_u[:, 0], hot_u[:, 1], :2] = 0
+            out_mask[hot_u[:, 0], hot_u[:, 1], 1:] = 255
         if len(cool_u) > 0:
-            mask_list[-1][cool_u[:, 0], cool_u[:, 1], 1:] = 0
+            out_mask[cool_u[:, 0], cool_u[:, 1], :2] = 255
+        mask_list.append(out_mask)
         # mask_h, mask_w, mask_d = np.shape(mask_list[0])
         # out_frame = cv2.resize(out_frame, (mask_w, mask_h))
         draw_zones(mask_list[3], self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
@@ -712,10 +714,10 @@ def peetect_frame(frame, cool_thresh, hot_thresh, pts, bg_image, smooth_kern, va
     fill_frame = flood_fill_points(di_frame, pts)
 
     # erode back previous dilation
-    er_frame = erode_frame(fill_frame, erode_kern)
+    # er_frame = erode_frame(fill_frame, erode_kern)
 
-    real_cool = np.bitwise_and(cool_mask, er_frame)
-    real_hot = np.bitwise_and(hot_mask, er_frame)
+    real_cool = np.bitwise_and(cool_mask, fill_frame)
+    real_hot = np.bitwise_and(hot_mask, fill_frame)
 
     # if urine detected set output to urine indices
     cool_xys = np.empty((0, 2))
@@ -738,7 +740,7 @@ def peetect_frame(frame, cool_thresh, hot_thresh, pts, bg_image, smooth_kern, va
     rot_xy = urine_px_to_cm_rot(urine_data[:, 1:3].astype(np.float32), cent_x, cent_y, px_per_cm, rot_ang=rot_ang)
     urine_data[:, 1:3] = rot_xy
     if return_frames:
-        return urine_data, [frame_smooth, bg_smooth, sub_frame, dz_frame, full_mask, di_frame, fill_frame, er_frame]
+        return urine_data, [frame_smooth, bg_smooth, sub_frame, dz_frame, full_mask, di_frame, fill_frame]
     else:
         return urine_data
 
@@ -866,11 +868,11 @@ def flood_fill_points(frame, pnts, fill=0):
                     cv2.floodFill(cop_f, None, (px, py), fill)
     return cop_f
 
-
-def erode_frame(frame, e_kern):
-    er_kern = np.ones((e_kern, e_kern), np.uint8)
-    er_frame = cv2.erode(frame, er_kern, iterations=1)
-    return er_frame
+#
+# def erode_frame(frame, e_kern):
+#     er_kern = np.ones((e_kern, e_kern), np.uint8)
+#     er_frame = cv2.erode(frame, er_kern, iterations=1)
+#     return er_frame
 
 
 def urine_px_to_cm_rot(pts, cent_x, cent_y, px_per_cm, rot_ang=0):
