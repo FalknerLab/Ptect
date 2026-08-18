@@ -482,7 +482,7 @@ class Peetector:
             if return_frame:
                 if self.frame_type == 2:
                     output_f = self.show_output(frame_i, hot_evts[:, 1:3].astype(int), fill_pnts, cool_evts[:, 1:3].astype(int))
-                    out_frame = self.show_all_steps(mask, output_f)
+                    out_frame = self.show_all_steps(mask, hot_evts[:, 1:3].astype(int), cool_evts[:, 1:3].astype(int))
                 else:
                     out_frame = self.show_output(frame_i, hot_evts[:, 1:3].astype(int), fill_pnts, cool_evts[:, 1:3].astype(int))
 
@@ -561,7 +561,7 @@ class Peetector:
 
         return self.dead_zones
 
-    def show_all_steps(self, mask_list, out_frame):
+    def show_all_steps(self, mask_list, hot_u, cool_u):
         """
         Shows all processing steps for a frame.
 
@@ -581,6 +581,10 @@ class Peetector:
         # mask_list order: [frame_smooth, bg_smooth, sub_frame, dz_frame, di_frame, fill_frame, er_frame]
         mask_list = [cv2.cvtColor(m.astype(np.uint8), cv2.COLOR_GRAY2BGR) for m in mask_list]
         draw_sleap_pts(mask_list[6], self.fill_pts[self.current_frame])
+        if len(hot_u) > 0:
+            mask_list[-1][hot_u[:, 0], hot_u[:, 1], :2] = 0
+        if len(cool_u) > 0:
+            mask_list[-1][cool_u[:, 0], cool_u[:, 1], 1:] = 0
         # mask_h, mask_w, mask_d = np.shape(mask_list[0])
         # out_frame = cv2.resize(out_frame, (mask_w, mask_h))
         draw_zones(mask_list[3], self.arena_shape, self.arena_cnt[0], self.arena_cnt[1], self.arena_params, self.dead_zones)
