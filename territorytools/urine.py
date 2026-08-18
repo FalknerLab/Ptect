@@ -580,6 +580,7 @@ class Peetector:
 
         # mask_list order: [frame_smooth, bg_smooth, sub_frame, dz_frame, full_mask, di_frame, fill_frame]
         mask_list = [cv2.cvtColor(m.astype(np.uint8), cv2.COLOR_GRAY2BGR) for m in mask_list]
+        draw_sleap_pts(mask_list[0], self.fill_pts[self.current_frame])
         draw_sleap_pts(mask_list[6], self.fill_pts[self.current_frame])
         out_mask = np.zeros_like(mask_list[0], dtype=np.uint8)
         if len(hot_u) > 0:
